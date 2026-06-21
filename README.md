@@ -1,128 +1,146 @@
+<div align="center">
+
 # ✒️ Streamz Journal
 
-A single-file web app: you type, and an animated hand holding a pen or feather quill
-**"writes" your words into a journal** — with real handwriting fonts, word-wrap, new
-lines, a page-turn animation, magical sparkles, and a feather that flexes with spring
-physics. Built for streaming (OBS / vertical & horizontal), but fun on its own.
+### Type, and a hand writes it into a journal — live, on screen.
 
-No build, no server, no dependencies — it's one `index.html` plus an `assets/` folder.
+A single-file web app where an animated hand holding a pen or feather quill **"writes" your words** into a journal — real handwriting fonts, page-turns, magical sparkles, and a feather that flexes with spring physics. Made for streaming, fun on its own.
 
-## Quick start
+[![▶ Live Demo](https://img.shields.io/badge/▶_Live_Demo-Open_it-7b3fe4?style=for-the-badge)](https://hanley-tech.github.io/streamz-journal/)
+&nbsp;
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-Open **`index.html`** in a browser (double-click it, or drag it into Chrome), then
-click the page and start typing. That's it.
+![No build](https://img.shields.io/badge/build-none-success) ![Dependencies](https://img.shields.io/badge/dependencies-0-success) ![One file](https://img.shields.io/badge/source-single_HTML_file-informational) ![Works in OBS](https://img.shields.io/badge/streaming-OBS_ready-blueviolet)
 
-> It needs internet **once** to pull the handwriting fonts from Google Fonts. To use
-> your own theme packs (`themes/packs.js`), serve the folder with any static server —
-> e.g. `python3 -m http.server` — since `file://` blocks loading sibling scripts in
-> some browsers.
+<br>
 
-## Keyboard
+<img src="docs/hero.jpg" alt="Streamz Journal — a feather quill writing glowing gold script on a purple page" width="820">
+
+</div>
+
+---
+
+## ✨ What it does
+
+You type into the page and the hand **writes it out**, letter by letter, in a handwriting font — wrapping lines, turning pages when one fills up, and flourishing each finished line with a little shimmer. Resize it to any streaming aspect ratio, hide the UI, and capture it in OBS. Or just doodle.
+
+- 🪶 **Watch it write** — the hand tracks the text baseline and the feather flops with real spring physics
+- 📖 **Auto page-turns** — fills a page, flips it, and carries your overflow forward so fast typing never runs off
+- 🎨 **Totally themeable** — paper, pen, ink, hand, background, sounds, sparkles — all data-driven
+- 📐 **Any aspect** — 16:9, 9:16, 1:1, 4:3, 3:4 — vertical or horizontal, for any platform
+- ✨ **Magic FX** — nib sparkles, line-lock shimmers, a page glow, and writing/chime/page-turn sounds
+- 💾 **Remembers everything** — your setup is saved to the browser and restored on reload
+- 🪶 **Zero dependencies** — one `index.html`, no build, no server. Open and go.
+
+<br>
+
+## 🎬 Looks
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/classic.jpg" alt="Classic Cream notebook with a pencil"><br>
+      <b>Classic Cream</b> — ruled notebook, pencil, realistic hand on a wooden desk.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/spellbook.jpg" alt="Hogwarts Spellbook parchment with a quill"><br>
+      <b>Hogwarts Spellbook</b> — gilt-bordered parchment tome with a feather quill.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/controls.jpg" alt="The control bar"><br>
+      <b>Everything is a knob</b> — theme, aspect, paper, pen, speed, spacing, size, margins, hand, FX.
+    </td>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/vertical.jpg" alt="Vertical 9:16 Yoyo theme" width="260"><br>
+      <b>Vertical (9:16)</b> — drop it straight into a phone-shaped stream.
+    </td>
+  </tr>
+</table>
+
+<br>
+
+## 🚀 Quick start
+
+**[▶ Just open the live demo.](https://hanley-tech.github.io/streamz-journal/)** Click the page and start typing.
+
+To run it locally, open **`index.html`** in a browser (double-click, or drag it into Chrome).
+
+> Needs internet **once** to pull handwriting fonts from Google Fonts. To load your own theme packs (`themes/packs.js`), serve the folder with any static server (e.g. `python3 -m http.server`) since some browsers block sibling scripts on `file://`.
+
+<br>
+
+## ⌨️ Keyboard
 
 | Key | Action |
 |---|---|
-| *(type)* | The hand writes your characters as you go |
-| **Enter** | New line (a shimmer "locks in" the finished line). Text also auto-wraps at the page edge |
-| **Tab** | Turn the page with a flip animation |
+| *(type)* | The hand writes your characters |
+| **Enter** | New line (with a lock-in shimmer); text also auto-wraps |
+| **Tab** | Turn the page |
 | **Esc** | Pause / resume typing |
-| **F9** | Hide / show the control bar (for a clean stream capture) |
-| **◀ / Resume** | Review previous pages, then return to the live page |
+| **F9** | Hide / show the controls (clean capture) |
+| **◀ / Resume** | Review previous pages, then return to live |
 
-When the page fills up it **turns automatically** and carries any overflow (and
-anything you typed ahead) onto the next page, so fast typing never runs off the end.
-
-## Controls
+## 🎛️ Controls
 
 | Control | What it does |
 |---|---|
-| **Theme** | One-click looks that set paper + pen + hand + background + sound together |
-| **Aspect** | Lock the frame to 16:9, 9:16, 1:1, 4:3, or 3:4 |
-| **Paper** | Ruled / grid / blank, plus paper color |
+| **Theme** | One-click looks (paper + pen + hand + background + sound) |
+| **Aspect** | Lock to 16:9, 9:16, 1:1, 4:3, or 3:4 |
+| **Paper** | Ruled / grid / blank + color |
 | **Pen** | Handwriting font + ink color |
-| **Speed** | Characters written per second |
-| **Spacing** | Line spacing (lines per page) |
-| **Text** | Text size, independent of spacing (script fonts render small — bump this) |
-| **Margins** | Left / right / top / bottom insets; the bottom margin sets where the page auto-turns |
-| **Hand** | Realistic or cartoon hand / feather quill, in Light / Medium / Deep tones, size, show/hide |
-| **Desk** | Toggle the background image |
-| **✨ FX** | Magical sparkles that trail the nib and shimmer along the feather |
-| **🔮 Glow** | Animated halo — the whole page pulses with light |
-| **📚 Bind** | Bound-book look (leather cover, gilt edge, page-stack, spine) |
-| **Sound** | Subtle writing scratch, a twinkly line-lock chime, and a page-turn whoosh |
-| **Full** | Fullscreen |
+| **Speed / Spacing / Text** | Chars-per-second, line spacing, and text size (independent) |
+| **Margins** | L / R / T / B insets; bottom margin sets where the page auto-turns |
+| **Hand** | Realistic / cartoon hand or feather quill, in 3 tones, size, show/hide |
+| **✨ FX / 🔮 Glow / 📚 Bind** | Sparkles, animated page glow, bound-leather-tome look |
+| **Sound / Full** | Writing + chime + page-turn audio; fullscreen |
 
-Your settings (theme, aspect, paper, pen, speed, spacing, text size, margins, hand +
-size/visibility, background, sound, FX/glow/bind) are saved to `localStorage` and
-**restored on reload**, so a live stream survives a refresh.
+Your settings persist to `localStorage` and restore on reload — a live stream survives a refresh.
 
-## Themes
+<br>
 
-**Built in** (in `index.html`): Classic Cream · Blue Notebook · Engineer Grid · Old
-Parchment · Chalkboard.
+## 🎨 Make your own theme
 
-**Bundled pack** (`themes/packs.js`, loaded automatically): **📖 Hogwarts Spellbook**
-in *Gilded* and *Ink* — rendered as a bound leather tome — plus the **✨ Yoyo the
-Witch** set (*Yoyo × Hogwarts*, *Lavender Letter*, *Golden Spell*) and *Midnight Ink*.
-The Yoyo themes are a worked example of a fully custom pack: a feminine hand holding a
-feather quill, aged page textures, a celestial lavender background, ink glow, and
-Hogwarts-style fonts.
+Everything is data-driven. Edit **[`themes/packs.js`](themes/packs.js)** (loaded automatically, fully commented) to add:
 
-### Make your own pack
+- `STREAMZ_THEMES` — paper, pen, hand, background, sound, sparkle palette, glow, bound-book frame, border texture
+- `STREAMZ_HANDS` — a transparent PNG + the nib position (as a width/height fraction) + size, plus an optional feather `grip` line
+- `STREAMZ_BACKGROUNDS` — image / gradient / none
+- `STREAMZ_FONTS` — a Google Fonts URL or a self-hosted `@font-face`
+- `STREAMZ_SFX` — your own writing / chime / page-turn sounds
 
-Everything is data-driven. Edit **`themes/packs.js`** (it's loaded before the app and
-merged in, and is fully commented with the schema). You can define:
+Ships with the **✨ Yoyo the Witch** pack (feather quill, celestial palette, ink glow) as a complete worked example, plus the bound **Hogwarts Spellbook** tome.
 
-- `window.STREAMZ_THEMES` — extra themes (paper, pen font + ink, hand, background, sound,
-  sparkle palette, page glow, bound-book frame, page-border texture, default lines/size)
-- `window.STREAMZ_HANDS` — extra hands/quills (a transparent PNG + the nib position as a
-  fraction of width/height, on-screen size, and an optional `grip` line for the feather hinge)
-- `window.STREAMZ_BACKGROUNDS` — image / gradient / none
-- `window.STREAMZ_FONTS` — extra handwriting fonts (a Google Fonts URL or a self-hosted `@font-face`)
-- `window.STREAMZ_SFX` — your own writing / chime / flip / page sounds
+<br>
 
-## URL presets (great for OBS Browser Sources)
+## 📺 Streaming (OBS) & URL presets
 
-Preset everything via query params:
+Press **F9** to hide the UI, **Full** for fullscreen, then add a **Window/Browser Source** in OBS and crop to the frame. Preset everything via the URL — perfect for a Browser Source:
 
 ```
 index.html?theme=yoyo&ar=9:16&font=Kalam&speed=14&paper=ruled&ink=%231c3a6e
 ```
 
-`theme`, `ar`, `font`, `speed`, `paper` (ruled|grid|blank), `ink` (URL-encoded hex),
-`hand` (e.g. `real_deep`, `cartoon_medium`, `quill_gold`). Add `&demo` for sample text.
-A `?theme=…`/`?hand=…` link wins for that view, while your saved global prefs are kept.
+`theme`, `ar`, `font`, `speed`, `paper`, `ink` (URL-encoded hex), `hand`, and `&demo` for sample text.
 
-## Streaming with OBS
+<br>
 
-1. Open `index.html`, pick an aspect ratio, press **F9** to hide the UI, **Full** for fullscreen.
-2. In OBS add a **Window Capture** (or a **Browser Source** pointed at the file/URL) and crop to the frame.
-3. The letterboxed background fills the rest — or just capture the journal region.
+## 🌐 Deploy
 
-## Deploy
+Static files at the repo root — deploys anywhere:
 
-It's static files at the repo root, so it deploys anywhere:
+- **GitHub Pages** — included. The workflow in `.github/workflows/pages.yml` publishes on push to `main` (one-time: **Settings → Pages → Source: GitHub Actions**).
+- **Netlify / Vercel / Cloudflare Pages / S3** — drag-drop the folder; no build command.
 
-- **GitHub Pages** — included. A workflow (`.github/workflows/pages.yml`) publishes on
-  every push to `main`. One-time: repo **Settings → Pages → Source: GitHub Actions**.
-  Your site lands at `https://<user>.github.io/<repo>/`.
-- **Netlify / Vercel / Cloudflare Pages / S3** — drag-and-drop the folder or point at the
-  repo; there's no build command (publish directory = repo root).
+## 🛠️ How it works
 
-## How it works
+Plain HTML/CSS/JS in one file — no framework, no bundler. The hand is drawn to a `<canvas>` each frame, anchored to the live text baseline; the feather bends with a small spring-physics hinge. Sparkles are a lightweight particle system, the page-turn is a CSS 3D strip animation, and state persists to `localStorage`.
 
-Plain HTML/CSS/JS in one file — no framework, no bundler. The hand is drawn to a
-`<canvas>` each frame and the feather is bent with a small spring-physics hinge
-(rigid hand, floppy feather). Sparkles are a lightweight particle system; the page-turn
-is a CSS 3D strip animation. Everything persists to `localStorage`.
+## 📜 Credits & license
 
-## Credits & license
-
-- **Fonts** — [Google Fonts](https://fonts.google.com/) (Caveat, Dancing Script, Pinyon
-  Script, Great Vibes, Alex Brush, and more), loaded at runtime under the SIL Open Font License.
-- **Artwork** — the hands, quills, backgrounds, and textures in `assets/` were generated
-  with AI image tools for this project.
-- The **Yoyo the Witch** pack's palette is an homage to public branding of
-  [@yoyothewitch](https://www.instagram.com/yoyothewitch/) and is provided as an example;
-  it implies no affiliation or endorsement.
+- **Fonts** — [Google Fonts](https://fonts.google.com/) (Caveat, Dancing Script, Pinyon Script, Great Vibes, Alex Brush, …) under the SIL Open Font License.
+- **Artwork** in `assets/` was generated with AI image tools for this project.
+- The **Yoyo the Witch** pack palette is an homage to public branding of [@yoyothewitch](https://www.instagram.com/yoyothewitch/), provided as an example — no affiliation or endorsement implied.
 
 Released under the **[MIT License](LICENSE)** © 2026 Hanley Leung.
