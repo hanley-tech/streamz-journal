@@ -674,8 +674,9 @@
     const writeScale = (ref / 13) * (textPct/100);    // text size (independent of spacing & margins)
     fontSize = writeScale * 0.74;
     // floor: line spacing can never be tighter than the glyphs need, or successive
-    // lines overlap and the text looks deformed/crushed (esp. big text + tight spacing)
-    lineHeight = Math.max(lineHeight, fontSize * 1.25);
+    // lines overlap and the text looks deformed/crushed (esp. big text + tight spacing).
+    // Handwriting fonts have tall ascenders + deep descenders, so this needs headroom.
+    lineHeight = Math.max(lineHeight, fontSize * 1.5);
     ink.style.setProperty('--lh', lineHeight+'px');
     ink.style.setProperty('--fs', fontSize+'px');
     ruled.style.setProperty('--lh', lineHeight+'px');
@@ -783,7 +784,10 @@
     const cr = anchor.getBoundingClientRect();
     const sr = stage.getBoundingClientRect();
     let x = cr.left - sr.left;                 // end of the written text
-    let y = cr.top - sr.top - fontSize*0.08;   // just above the baseline so the nib rests ON the letters, not below them
+    // sit the nib just above the baseline so it rests ON the letters. The small lift
+    // corrects a residual nib-calibration offset in the hand art, which scales with the
+    // hand's on-screen size — so scale it by handScale too (else big/small hands drift).
+    let y = cr.top - sr.top - fontSize*0.08*handScale;
     const now = performance.now();
     nibX = x; nibY = y;                       // sparkles emit from the writing point
     // detect carriage-return / wrap (big leftward jump) → lift the pen
