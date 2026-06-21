@@ -1,0 +1,13 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & local tool artifacts
+*.log
+.playwright-mcp/
+
+# Stray test screenshots / scratch
+j1.png
+*.tmp

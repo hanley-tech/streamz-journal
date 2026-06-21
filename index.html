@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Streamz Journal — Handwriting Journal for Streaming</title>
+<meta name="description" content="A single-file web app: type and an animated hand 'writes' your words into a journal with handwriting fonts, page-turns, and magical effects. Built for streaming (OBS, vertical & horizontal)." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%92%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Shadows+Into+Light&family=Gloria+Hallelujah&family=Patrick+Hand&family=Dancing+Script:wght@400;600;700&family=Kalam:wght@300;400;700&family=Great+Vibes&family=Tangerine:wght@400;700&family=Pinyon+Script&family=Satisfy&family=Cinzel:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=IM+Fell+English:ital@0;1&family=Alex+Brush&family=Allura&family=Yellowtail&family=Kaushan+Script&family=Sacramento&family=Parisienne&family=Pacifico&family=Grand+Hotel&family=Cookie&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1c3a6e;
+    --panel:#14161c;
+    --panel2:#1d212b;
+    --accent:#7aa2ff;
+    --text:#e7ebf3;
+    --muted:#9aa4b8;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:#0a0b0e;
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Layout ---------- */
+  #app{display:flex;flex-direction:column;height:100%}
+  #stagewrap{
+    flex:1;
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(120% 120% at 50% 0%, #15171d 0%, #0a0b0e 60%, #060708 100%);
+    overflow:hidden;
+    min-height:0;
+  }
+
+  /* The stage = the streamable frame (aspect-locked) */
+  #stage{
+    position:relative;
+    background:
+      radial-gradient(140% 120% at 50% -10%, #6b4a2c 0%, #4a3220 45%, #2e2014 100%);
+    background-size:cover;background-position:center;
+    box-shadow:0 30px 90px rgba(0,0,0,.6), inset 0 0 140px rgba(0,0,0,.45);
+    overflow:hidden;
+  }
+  #stage.has-desk{
+    background-image:url("assets/desk.jpg");
+    background-size:cover;background-position:center;
+  }
+  /* vignette over the desk for depth (alpha is themeable) */
+  #stage::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 120% at 50% 40%, transparent 45%, rgba(0,0,0,var(--vig,.45)) 100%);
+  }
+
+  /* ---------- Book ---------- */
+  /* optional animated magical aura behind the book */
+  #bookglow{
+    position:absolute; left:50%; top:50%; width:104%; height:106%;
+    transform:translate(-50%,-50%); border-radius:24px;
+    background:radial-gradient(closest-side, var(--glow-color, rgba(255,210,120,.85)), transparent 70%);
+    filter:blur(42px); opacity:0; z-index:0; pointer-events:none;
+  }
+  @keyframes glowPulse{
+    0%,100%{ opacity:.55; transform:translate(-50%,-50%) scale(1); }
+    50%    { opacity:1;   transform:translate(-50%,-50%) scale(1.07); }
+  }
+  #stage.glow-on #bookglow{ animation:glowPulse 3.4s ease-in-out infinite; }
+  /* the page edges emit a pulsing halo so the whole page glows */
+  @keyframes pageGlow{
+    0%,100%{ box-shadow:0 0 26px 4px var(--glow-color,rgba(255,210,120,.7)), 0 0 70px 12px var(--glow-color,rgba(255,210,120,.45)); }
+    50%    { box-shadow:0 0 48px 12px var(--glow-color,rgba(255,210,120,.85)), 0 0 120px 30px var(--glow-color,rgba(255,210,120,.6)); }
+  }
+  #stage.glow-on .page{ animation:pageGlow 3.4s ease-in-out infinite; }
+  /* a soft inner shimmer on the page surface */
+  /* edge-only sheen so the GLOW lights the page rim without recolouring the parchment surface */
+  #pageshine{ position:absolute; inset:0; pointer-events:none; z-index:3; border-radius:inherit; opacity:0;
+    background:radial-gradient(135% 120% at 50% 50%, transparent 62%, var(--glow-color,rgba(255,235,180,.5)) 100%);
+    mix-blend-mode:screen; }
+  @keyframes pageShine{ 0%,100%{opacity:.18} 50%{opacity:.42} }
+  #stage.glow-on #pageshine{ animation:pageShine 3.4s ease-in-out infinite; }
+  #book{
+    position:absolute;
+    left:50%;top:50%;
+    transform:translate(-50%,-50%) rotate(var(--book-rot,0deg));
+    width:90%;height:92%;
+    perspective:2200px;
+    transition:transform .9s cubic-bezier(.2,.7,.2,1);
+  }
+  .page-base{
+    position:absolute;inset:0;
+    border-radius:6px 14px 14px 6px;
+    background:var(--paper-bg, #f7f1de);
+    box-shadow:
+      0 18px 50px rgba(0,0,0,.45),
+      inset 0 0 60px rgba(120,90,40,.10);
+  }
+  /* ---- bound leather tome frame (theme book:'tome', or the Bind toggle) ---- */
+  .cover{ display:none; position:absolute; inset:-4.5% -5.5%; border-radius:7px 15px 15px 7px;
+    background:
+      radial-gradient(150% 130% at 28% 8%, rgba(255,215,165,.12), transparent 55%),
+      linear-gradient(135deg,#5c3c24 0%, #44291690 52%, #2b190d 100%);
+    box-shadow:0 34px 80px rgba(0,0,0,.6), inset 0 0 0 3px rgba(15,8,3,.6), inset 0 2px 6px rgba(255,200,140,.16);
+    z-index:0;
+  }
+  /* gilt frame line embossed on the leather */
+  .cover::before{ content:""; position:absolute; inset:10px; border-radius:5px 12px 12px 5px;
+    border:1.5px solid rgba(196,156,96,.5); box-shadow:inset 0 0 22px rgba(0,0,0,.45); }
+  #book.tome{ width:84%; height:86%; }
+  #book.tome .cover{ display:block; }
+  /* page thickness — a soft stack of page edges peeking bottom-right (parchment tones, no bright strip) */
+  #book.tome .page-base{
+    box-shadow:1px 2px 0 #d4c49d, 3px 4px 0 #c7b68d, 5px 6px 0 #b9a87e, 7px 9px 0 #ab9a6f, 0 16px 36px rgba(0,0,0,.45);
+  }
+  /* (left gutter shadow handled by #gutter, which stays above the flip) */
+  /* binding shadow on the left edge */
+  #book::before{
+    content:"";position:absolute;left:-2.2%;top:-2%;width:8%;height:104%;
+    background:linear-gradient(90deg, rgba(0,0,0,.45), rgba(0,0,0,0));
+    border-radius:10px;filter:blur(2px);z-index:5;pointer-events:none;
+  }
+
+  .page{
+    position:absolute;inset:0;
+    border-radius:6px 14px 14px 6px;
+    overflow:hidden;
+    background:var(--paper-bg, #f7f1de);
+  }
+  /* paper texture + right-edge curl (the LEFT gutter shadow is now #gutter, on top of the flip) */
+  .page::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 80% at 100% 50%, rgba(0,0,0,.06), transparent 40%);
+    border-radius:inherit;
+  }
+  /* persistent left gutter/binding shadow — a STAGE-level overlay over the book's left
+     edge (outside the book's 3D context), so the page-turn never occludes it */
+  #gutter{
+    position:absolute; pointer-events:none; z-index:6; display:none;
+    border-radius:6px 0 0 6px;
+    background:linear-gradient(90deg, rgba(20,12,4,.12), rgba(20,12,4,0) 70%);
+  }
+
+  .ruled{
+    position:absolute;
+    left:var(--ml,8%); right:var(--mr,8%);
+    top:var(--mt,6%); bottom:var(--mb,6%);
+    overflow:hidden;
+  }
+  /* the writing text layer */
+  .ink{
+    position:absolute;inset:0;
+    color:var(--ink);
+    font-family:var(--hand,"Caveat"), "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", cursive;
+    font-size:var(--fs,40px);
+    line-height:var(--lh,52px);
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow:hidden;
+    text-shadow:var(--ink-glow, 0 0 .5px rgba(0,0,0,.12));
+    letter-spacing:.2px;
+  }
+  .cursor{display:inline; white-space:pre;}
+  /* writing-area / margin guide overlay (debug) */
+  .ruled.guide{ box-shadow: inset 0 0 0 2px rgba(255,40,90,.9); }
+  .ruled.guide::after{ content:'writing area · text auto-flips at the bottom edge';
+    position:absolute; left:4px; top:2px; font:600 10px/1.3 -apple-system,sans-serif;
+    color:#fff; background:rgba(255,40,90,.85); padding:2px 5px; border-radius:4px; pointer-events:none; }
+
+  /* ruled / grid backgrounds applied to .ruled (colors are themeable) */
+  .lines-ruled{
+    background-image:linear-gradient(to bottom, transparent calc(var(--lh) - 2px), var(--rule-color,rgba(60,90,160,.28)) calc(var(--lh) - 2px), var(--rule-color,rgba(60,90,160,.28)) var(--lh));
+    background-size:100% var(--lh);
+    background-position:0 var(--rule-off, 0px);
+  }
+  .lines-grid{
+    background-image:
+      linear-gradient(to bottom, transparent calc(var(--lh) - 1.5px), var(--rule-color,rgba(60,90,160,.20)) calc(var(--lh) - 1.5px), var(--rule-color,rgba(60,90,160,.20)) var(--lh)),
+      linear-gradient(to right, transparent calc(var(--lh) - 1.5px), var(--rule-color2,rgba(60,90,160,.16)) calc(var(--lh) - 1.5px), var(--rule-color2,rgba(60,90,160,.16)) var(--lh));
+    background-size:100% var(--lh), var(--lh) var(--lh);
+    background-position:0 var(--rule-off,0px), 0 0;
+  }
+  .lines-blank{background:none;}
+  /* margin line for ruled (themeable) */
+  .margin-line::before{
+    content:"";position:absolute;top:0;bottom:0;left:8%;width:2px;
+    background:var(--margin-color,rgba(200,80,80,.35));
+  }
+  /* wet ink: freshest strokes fade in as they "dry" (opacity is set inline per-char) */
+
+  /* page flip overlay — the turning page is sliced into vertical strips that
+     bend progressively, so it curls like real paper instead of a stiff card */
+  #flip{
+    position:absolute;inset:0;
+    transform-style:preserve-3d;
+    display:none;
+    z-index:8;
+    pointer-events:none;
+  }
+  #flip .strip{ position:absolute; top:0; transform-origin:left center; transform-style:preserve-3d; }
+  #flip .clip{ position:absolute; inset:0; overflow:hidden; backface-visibility:hidden; }
+  #flip .shade{ position:absolute; inset:0; pointer-events:none; }
+
+  /* ---------- Hand + pencil ---------- */
+  #handimg{ display:none; }   /* hidden texture source — the canvas is what shows */
+  #handcanvas{
+    position:absolute;left:0;top:0;
+    transform-origin:0 0;
+    pointer-events:none;
+    z-index:9;
+    will-change:transform;
+    transition:opacity .25s ease;
+    filter:drop-shadow(10px 18px 16px rgba(0,0,0,.34));
+  }
+  #handcanvas.hidden{opacity:0}
+
+  /* magical sparkle canvas (over the page + feather) */
+  #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10}
+
+  /* ---------- Hidden capture textarea ---------- */
+  #feed{
+    position:fixed;left:-9999px;top:0;width:10px;height:10px;opacity:0;
+  }
+
+  /* ---------- Hints ---------- */
+  #typehint{
+    position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+    background:rgba(10,12,16,.72);color:#fff;padding:10px 16px;border-radius:999px;
+    font-size:14px;letter-spacing:.3px;backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,.12);z-index:20;
+    transition:opacity .3s;pointer-events:none;
+  }
+  #pagefull{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    background:rgba(180,90,40,.92);color:#fff;padding:7px 14px;border-radius:999px;
+    font-size:13px;z-index:20;display:none;box-shadow:0 6px 20px rgba(0,0,0,.3);
+  }
+  #reviewbar{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    background:rgba(40,60,120,.92);color:#fff;padding:7px 14px;border-radius:999px;
+    font-size:13px;z-index:20;display:none;
+  }
+  #pausehint{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    background:rgba(120,90,40,.92);color:#fff;padding:7px 14px;border-radius:999px;
+    font-size:13px;z-index:21;display:none;box-shadow:0 6px 20px rgba(0,0,0,.3);
+  }
+  #toast{
+    position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+    background:rgba(20,24,32,.92);color:#fff;padding:8px 16px;border-radius:999px;
+    font-size:13px;z-index:30;display:none;box-shadow:0 6px 20px rgba(0,0,0,.4);
+    border:1px solid rgba(255,255,255,.12);
+  }
+
+  /* ---------- Controls ---------- */
+  #controls{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border-top:1px solid rgba(255,255,255,.06);
+    padding:10px 14px;
+    display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;
+    max-height:42vh;overflow:auto;
+  }
+  #controls.hidden{display:none}
+  .grp{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);
+    padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.05)}
+  .grp h4{margin:0 6px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+  button.btn{
+    background:#2a2f3a;color:var(--text);border:1px solid rgba(255,255,255,.08);
+    border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px;line-height:1;
+    transition:background .15s,transform .05s;
+  }
+  button.btn:hover{background:#353b48}
+  button.btn:active{transform:translateY(1px)}
+  button.btn.on{background:var(--accent);color:#0b1020;border-color:transparent;font-weight:600}
+  select,input[type=range]{accent-color:var(--accent)}
+  select{background:#2a2f3a;color:var(--text);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:5px 7px;font-size:13px}
+  input[type=color]{width:30px;height:26px;border:none;background:none;border-radius:6px;cursor:pointer;padding:0}
+  input[type=range]{width:96px}
+  .val{min-width:34px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .seg{display:flex;gap:4px}
+  .seg .btn{padding:6px 9px}
+  #brand{font-weight:700;letter-spacing:.4px;margin-right:4px}
+  #brand small{color:var(--muted);font-weight:400;letter-spacing:0}
+  .spacer{flex:1}
+  kbd{background:#000;border:1px solid #333;border-radius:4px;padding:1px 5px;font-size:11px}
+  #showbar{
+    position:fixed;right:14px;bottom:14px;z-index:50;display:none;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stagewrap">
+    <div id="stage">
+      <div id="bookglow"></div>
+      <div id="book">
+        <div class="cover"></div>
+        <div class="page-base"></div>
+        <div class="page" id="page">
+          <div id="pageshine"></div>
+          <div class="ruled" id="ruled">
+            <div class="ink" id="ink"></div>
+          </div>
+        </div>
+        <div id="flip"></div>
+      </div>
+      <div id="gutter"></div>
+
+      <!-- Hand + quill. #handimg is the hidden TEXTURE source (src swapped from the
+           HANDS registry); #handcanvas is what's shown — the image redrawn each frame,
+           deformed by a spring-driven bone spine so the feather flops while the hand
+           stays rigid (see deformHand()). -->
+      <img id="handimg" src="assets/real_light.png" alt="" draggable="false" aria-hidden="true">
+      <canvas id="handcanvas" aria-hidden="true"></canvas>
+
+      <!-- magical sparkle particles -->
+      <canvas id="fx" aria-hidden="true"></canvas>
+
+      <div id="pagefull">Page full — press <kbd>Tab</kbd> to turn the page</div>
+      <div id="reviewbar"></div>
+      <div id="typehint">Click here and start typing ✍️</div>
+      <div id="pausehint">⏸ Typing paused — press <kbd>Esc</kbd> or click to resume</div>
+      <div id="toast"></div>
+    </div>
+  </div>
+
+  <textarea id="feed" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+
+  <div id="controls">
+    <span id="brand">✒️ Streamz Journal</span>
+
+    <div class="grp">
+      <h4>Theme</h4>
+      <select id="theme" title="Theme pack" aria-label="Theme pack"></select>
+    </div>
+
+    <div class="grp">
+      <h4>Aspect</h4>
+      <div class="seg" id="aspectSeg">
+        <button class="btn" data-ar="16:9">16:9</button>
+        <button class="btn on" data-ar="9:16">9:16</button>
+        <button class="btn" data-ar="1:1">1:1</button>
+        <button class="btn" data-ar="4:3">4:3</button>
+        <button class="btn" data-ar="3:4">3:4</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h4>Paper</h4>
+      <select id="paperStyle">
+        <option value="ruled" selected>Ruled</option>
+        <option value="grid">Grid</option>
+        <option value="blank">Blank</option>
+      </select>
+      <select id="paperColor">
+        <option value="#f7f1de" selected>Cream</option>
+        <option value="#fdfdf7">White</option>
+        <option value="#f3e9cf">Aged</option>
+        <option value="#dfe9f0">Cool</option>
+      </select>
+    </div>
+
+    <div class="grp">
+      <h4>Pen</h4>
+      <select id="font">
+        <option value="Caveat" selected>Caveat</option>
+        <option value="Patrick Hand">Patrick Hand</option>
+        <option value="Shadows Into Light">Shadows Into Light</option>
+        <option value="Gloria Hallelujah">Gloria Hallelujah</option>
+        <option value="Kalam">Kalam</option>
+        <option value="Dancing Script">Dancing Script</option>
+        <option value="Great Vibes">Great Vibes</option>
+        <option value="Tangerine">Tangerine</option>
+        <option value="Pinyon Script">Pinyon Script</option>
+        <option value="Satisfy">Satisfy</option>
+        <option value="Cinzel Decorative">Cinzel Decorative</option>
+        <option value="IM Fell English">IM Fell English</option>
+        <option value="Alex Brush">Alex Brush</option>
+        <option value="Allura">Allura</option>
+        <option value="Yellowtail">Yellowtail</option>
+        <option value="Kaushan Script">Kaushan Script</option>
+        <option value="Sacramento">Sacramento</option>
+        <option value="Parisienne">Parisienne</option>
+        <option value="Pacifico">Pacifico</option>
+        <option value="Grand Hotel">Grand Hotel</option>
+        <option value="Cookie">Cookie</option>
+      </select>
+      <input type="color" id="inkColor" value="#1c3a6e" title="Ink color">
+    </div>
+
+    <div class="grp">
+      <h4>Speed</h4>
+      <input type="range" id="speed" min="2" max="40" value="11">
+      <span class="val" id="speedVal">11</span>
+    </div>
+
+    <div class="grp">
+      <h4>Spacing</h4>
+      <input type="range" id="lines" min="6" max="22" value="15" title="Line spacing (higher = more space)">
+      <span class="val" id="linesVal">15</span>
+    </div>
+
+    <div class="grp">
+      <h4>Text</h4>
+      <input type="range" id="textSize" min="55" max="170" value="100" title="Text size">
+      <span class="val" id="textVal">100</span>
+    </div>
+
+    <div class="grp">
+      <h4>Margin</h4>
+      <span style="color:var(--muted);font-size:11px">L</span><input type="range" id="mL" min="0" max="28" value="8" style="width:104px" title="Left margin">
+      <span style="color:var(--muted);font-size:11px">R</span><input type="range" id="mR" min="0" max="28" value="8" style="width:104px" title="Right margin">
+      <span style="color:var(--muted);font-size:11px">T</span><input type="range" id="mT" min="0" max="28" value="6" style="width:104px" title="Top margin">
+      <span style="color:var(--muted);font-size:11px">B</span><input type="range" id="mB" min="0" max="36" value="6" style="width:104px" title="Bottom margin — text auto-flips when it reaches here">
+      <button class="btn" id="guideBtn" title="Show writing-area guide">📐</button>
+    </div>
+
+    <div class="grp">
+      <h4>Hand</h4>
+      <select id="handStyle" title="Hand style" aria-label="Hand style"></select>
+      <input type="range" id="handSize" min="40" max="160" value="100">
+      <span class="val" id="handVal">100</span>
+      <button class="btn on" id="handToggle" title="Show/hide hand">Show</button>
+    </div>
+
+    <div class="grp">
+      <h4>Page</h4>
+      <button class="btn" id="prevBtn" title="Review previous page">◀</button>
+      <button class="btn" id="turnBtn" title="Turn page (Tab)">Turn ▶</button>
+      <button class="btn" id="clearBtn" title="Clear this page">Clear</button>
+      <label style="display:flex;align-items:center;gap:5px;color:var(--muted)"><input type="checkbox" id="autoTurn" checked> auto</label>
+    </div>
+
+    <div class="grp">
+      <button class="btn on" id="deskBtn" title="Wooden desk background">🪵 Desk</button>
+      <button class="btn" id="fxBtn" title="Magic sparkles">✨ FX</button>
+      <input type="range" id="fxAmt" min="0" max="220" value="100" style="width:54px" title="Sparkle amount">
+      <button class="btn" id="glowBtn" title="Animated book glow">🔮 Glow</button>
+      <button class="btn" id="bindBtn" title="Bound-book look">📚 Bind</button>
+      <button class="btn" id="soundBtn" title="Pencil sound">🔇 Sound</button>
+      <button class="btn" id="testSoundBtn" title="Play all sounds">🔊 Test</button>
+      <button class="btn" id="fsBtn" title="Fullscreen">⛶ Full</button>
+      <button class="btn on" id="pauseBtn" title="Pause/resume typing (Esc)">⏸ Type</button>
+      <button class="btn" id="hideBtn" title="Hide UI (F9)">Hide UI</button>
+    </div>
+  </div>
+</div>
+
+<div id="showbar"><button class="btn" id="showBtn">Show UI (F9)</button></div>
+
+<!-- Optional theme packs (edit themes/packs.js to add your own). Safe if absent. -->
+<script src="themes/packs.js" onerror="void 0"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- elements ----------
+  const stage   = document.getElementById('stage');
+  const stagewrap = document.getElementById('stagewrap');
+  const book    = document.getElementById('book');
+  const page    = document.getElementById('page');
+  const ruled   = document.getElementById('ruled');
+  const ink     = document.getElementById('ink');
+  const handimg = document.getElementById('handimg');
+  const handcanvas = document.getElementById('handcanvas');
+  const handctx = handcanvas.getContext('2d');
+  let handMeshDirty = true;   // force a canvas redraw (new texture, resize, settled frame)
+  handimg.addEventListener('load', ()=>{ handMeshDirty = true; });
+  const flip    = document.getElementById('flip');
+  const feed    = document.getElementById('feed');
+  const typehint= document.getElementById('typehint');
+  const pagefull= document.getElementById('pagefull');
+  const reviewbar= document.getElementById('reviewbar');
+  const controls= document.getElementById('controls');
+  const showbar = document.getElementById('showbar');
+
+  // ---------- state ----------
+  let AR = {w:9, h:16};
+  let targetText = "";          // what the user has typed on the current page
+  let revealed = 0;             // number of chars "written" so far
+  let lineHeight = 52, fontSize = 40;
+  let linesPerPage = 13;
+  let textPct = 100;            // independent text-size multiplier (100 = default)
+  let marginL = 8, marginR = 8, marginT = 6, marginB = 6;   // page margins (%) — mB also sets the auto-flip trigger
+  let sparkleAmt = 1.0;         // sparkle density multiplier
+  let speed = 11;               // chars per second
+  let handScale = 1.0;          // user multiplier
+  let handBaseW = 360;          // px width of hand svg at scale 1
+  let handVisible = true;
+  let writing = false, lastWriteAt = 0, charAccum = 0, lastTime = 0;
+  let strokeTime = -1e9, strokeToggle = false;   // per-character writing "stroke" (2-frame rock)
+  let springAngle = 0, springVel = 0, prevNibSX = null, prevNibSY = null, prevSpringT = 0;   // feather flop physics
+  let soundOn = false;
+  let paperStyle = 'ruled';
+  let pages = [];               // committed page texts
+  let reviewIndex = null;       // when reviewing history (null = live page)
+  let needRender = true;
+
+  // realism / theme state
+  let revealTimes = [];         // performance.now() per revealed char index (wet-ink fade)
+  let liftStart = -1e9, lastHX = null;   // pen-lift between lines
+  let soundKind = 'pencil';
+  let paperColor = '#f7f1de';
+  const FADE_MS = 240;
+
+  // ---------- Hand registry (data-driven) ----------
+  // image hands share one <img> (src is swapped); svg hands use their own element.
+  // fx/fy = pencil-tip position as a fraction of the element's width/height.
+  // k = element width in line-heights (at hand-size 100%). Gender-neutral labels.
+  const HANDS = {
+    real_light:    {kind:'image', src:'assets/real_light.png',    fx:0.027, fy:0.6153,k:6.2, ar:1.5, type:'Realistic', tone:'Light'},
+    real_medium:   {kind:'image', src:'assets/real_medium.png',   fx:0.0742,fy:0.6185,k:6.2, ar:1.5, type:'Realistic', tone:'Medium'},
+    real_deep:     {kind:'image', src:'assets/real_deep.png',     fx:0.0693,fy:0.6250,k:6.2, ar:1.5, type:'Realistic', tone:'Deep'},
+    cartoon_light: {kind:'image', src:'assets/cartoon_light.png', fx:0.0498,fy:0.6127,k:6.2, ar:1.5, type:'Cartoon',   tone:'Light'},
+    cartoon_medium:{kind:'image', src:'assets/cartoon_medium.png',fx:0.0479,fy:0.6205,k:6.2, ar:1.5, type:'Cartoon',   tone:'Medium'},
+    cartoon_deep:  {kind:'image', src:'assets/cartoon_deep.png',  fx:0.0381,fy:0.6087,k:6.2, ar:1.5, type:'Cartoon',   tone:'Deep'},
+  };
+  let handMode = 'real_light';
+  let curHandDef = HANDS.real_light;
+  function resolveHand(h){ return (typeof h==='string') ? (HANDS[h]||HANDS.real_light) : h; }
+  function activeHand(){ const d=curHandDef; return {el:handcanvas, fx:d.fx, fy:d.fy, k:d.k}; }
+  function setHandMode(m){
+    const d = resolveHand(m);
+    curHandDef = d;
+    if(typeof m==='string') handMode = m;
+    if(handimg.getAttribute('src') !== d.src){ handimg.setAttribute('src', d.src); }
+    measure();
+  }
+
+  // ---------- Background registry ----------
+  const BG = {
+    desk:     {kind:'image', src:'assets/desk.jpg', vignette:.45},
+    darkwood: {kind:'gradient', css:'radial-gradient(140% 120% at 50% -10%, #6b4a2c 0%, #4a3220 45%, #2e2014 100%)', vignette:.35},
+    slate:    {kind:'gradient', css:'radial-gradient(120% 120% at 50% 0%, #2a2f3a 0%, #11151c 72%)', vignette:.42},
+    none:     {kind:'none'},
+  };
+  let curBgDef = BG.desk, bgEnabled = true;
+  function resolveBg(b){ return (typeof b==='string') ? (BG[b]||BG.desk) : b; }
+  function applyBg(b){ curBgDef = resolveBg(b); renderBg(); }
+  function renderBg(){
+    stage.classList.remove('has-desk');
+    if(!bgEnabled || curBgDef.kind==='none'){
+      stage.style.backgroundColor='transparent';
+      stage.style.backgroundImage='none';
+      stage.style.setProperty('--vig','0');
+      return;
+    }
+    stage.style.backgroundColor = '#2e2014';
+    stage.style.backgroundImage = curBgDef.kind==='image' ? `url("${curBgDef.src}")` : curBgDef.css;
+    stage.style.setProperty('--vig', String(curBgDef.vignette ?? .4));
+  }
+
+  // ---------- Theme packs ----------
+  const THEMES = [
+    {id:'classic',  name:'Classic Cream',  paper:{style:'ruled',color:'#f7f1de',rule:'rgba(60,90,160,.30)',margin:'rgba(200,80,80,.35)'}, pen:{font:'Caveat',ink:'#1c3a6e'},        hand:'real_light',    bg:'desk',     sound:'pencil'},
+    {id:'notebook', name:'Blue Notebook',  paper:{style:'ruled',color:'#fdfdf7',rule:'rgba(70,110,190,.34)',margin:'rgba(210,90,90,.40)'}, pen:{font:'Patrick Hand',ink:'#16407a'},  hand:'cartoon_light', bg:'darkwood', sound:'pen'},
+    {id:'grid',     name:'Engineer Grid',  paper:{style:'grid',color:'#f4f6f0',rule:'rgba(70,120,90,.24)',rule2:'rgba(70,120,90,.18)'},   pen:{font:'Kalam',ink:'#22332b'},        hand:'real_medium',   bg:'desk',     sound:'pencil'},
+    {id:'parchment',name:'Old Parchment',  paper:{style:'blank',color:'#efe2c2'},                                                          pen:{font:'Dancing Script',ink:'#5a3a1c'},hand:'real_deep',     bg:'darkwood', sound:'pen'},
+    {id:'chalk',    name:'Chalkboard',     paper:{style:'grid',color:'#26352c',rule:'rgba(255,255,255,.13)',rule2:'rgba(255,255,255,.09)'},pen:{font:'Gloria Hallelujah',ink:'#f4f7f2'},hand:'cartoon_deep',bg:'slate',  sound:'none'},
+  ];
+  let ALL_THEMES = THEMES.slice();
+
+  function setPaperColor(c){ paperColor = c; applyPaper();
+    const sel=document.getElementById('paperColor'); if([...sel.options].some(o=>o.value===c)) sel.value=c; }
+  function setPaperTexture(url, fit){
+    const size = fit==='fill' ? '100% 100%' : 'cover';  // 'fill' keeps ornate borders framing the page
+    document.querySelectorAll('.page,.page-base,#flip').forEach(e=>{
+      e.style.backgroundImage = url ? `url("${url}")` : '';
+      e.style.backgroundSize = size; e.style.backgroundPosition = 'center';
+      e.style.backgroundBlendMode = '';   // no blend-mode (avoids the flip color-shift)
+    });
+  }
+  // Decorative border: the transparent ornament PNG is layered as a stretched
+  // background OVER the parchment, so the frame sits right at the page edges with
+  // no inner-edge line (the old border-image approach left a faint square seam).
+  function setLayeredPaper(parch, orn){
+    document.querySelectorAll('.page,.page-base,#flip').forEach(e=>{
+      e.style.borderStyle=''; e.style.borderImage=''; e.style.borderWidth=''; e.style.borderRadius='';
+      e.style.backgroundImage = `url("${orn}"), url("${parch}")`;
+      e.style.backgroundSize = '100% 100%, cover';
+      e.style.backgroundPosition = 'center, center';
+      e.style.backgroundRepeat = 'no-repeat, no-repeat';
+      e.style.backgroundBlendMode = '';   // no blend-mode: it renders differently when the page is GPU-composited during a flip
+    });
+    borderSrc = null;
+  }
+  let borderSrc=null, borderSlice='6% 9%', borderW=0.035;
+  function setPaperBorder(src, slice){
+    borderSrc = src || null;
+    borderSlice = (slice==null) ? '6% 9%' : (typeof slice==='number' ? slice+'%' : slice);
+    const p = document.getElementById('page');
+    if(borderSrc){
+      // transparent ornament PNG as border-image; the page's own parchment shows
+      // through (masked onto it) so there's no seam between border and centre
+      p.style.borderStyle='solid'; p.style.borderColor='transparent';
+      // no 'fill' → the page's own parchment shows through the centre continuously
+      // (the 'fill' center slice was causing a faint square seam at the border edge)
+      p.style.borderImage = `url("${borderSrc}") ${borderSlice} stretch`;
+      p.style.borderRadius='2px';
+    } else {
+      p.style.borderStyle=''; p.style.borderImage=''; p.style.borderWidth=''; p.style.borderRadius='';
+    }
+    applyBorderWidth();
+  }
+  function applyBorderWidth(){
+    if(!borderSrc) return;
+    const w = Math.max(6, Math.min(stage.clientWidth, stage.clientHeight)*(borderW||0.035));
+    document.getElementById('page').style.borderWidth = w+'px';
+  }
+  function setFont(f){ const sel=document.getElementById('font'); if([...sel.options].some(o=>o.value===f)) sel.value=f; ink.style.setProperty('--hand', f); }
+  function setInk(c){ document.getElementById('inkColor').value=c; ink.style.setProperty('--ink', c); }
+
+  function applyTheme(t){
+    if(!t) return;
+    paperStyle = t.paper.style;
+    document.getElementById('paperStyle').value = paperStyle;
+    applyPaper(); setMargins();
+    setPaperColor(t.paper.color);
+    if(t.paper.border){
+      // ornament layered over parchment (no border-image inner-edge line);
+      // applied to .page, .page-base AND the flip clone so nothing pops on turn
+      setLayeredPaper(t.paper.border.paper || 'assets/parchment_clean.jpg', t.paper.border.src);
+    } else {
+      setPaperBorder(null); setPaperTexture(t.paper.texture, t.paper.textureFit);
+    }
+    ruled.style.setProperty('--rule-color',  t.paper.rule  || 'rgba(60,90,160,.28)');
+    ruled.style.setProperty('--rule-color2', t.paper.rule2 || t.paper.rule || 'rgba(60,90,160,.18)');
+    ruled.style.setProperty('--margin-color',t.paper.margin|| 'rgba(200,80,80,.35)');
+    setFont(t.pen.font); setInk(t.pen.ink);
+    ink.style.setProperty('--ink-glow', t.glow || '0 0 .5px rgba(0,0,0,.12)');
+    if(typeof t.lines==='number'){ const sp=28-t.lines; linesR.value=sp; linesV.textContent=sp; }  // theme.lines = lines-per-page
+    if(typeof t.textSize==='number'){ textPct=t.textSize; textR.value=t.textSize; textV.textContent=t.textSize; }
+    measure();
+    setHandMode(t.hand); syncHandSelect();
+    setThemeSparkle(t.sparkle);
+    setThemeGlow(t.bookGlow);
+    setThemeBook(t.book);
+    applyBg(t.bg);
+    soundKind = t.sound || 'pencil';
+    needRender = true;
+  }
+
+  // ---------- layout / aspect ----------
+  function layout(){
+    const W = stagewrap.clientWidth, H = stagewrap.clientHeight;
+    const ar = AR.w/AR.h;
+    let w = W, h = W/ar;
+    if(h > H){ h = H; w = H*ar; }
+    stage.style.width  = Math.round(w)+'px';
+    stage.style.height = Math.round(h)+'px';
+    requestAnimationFrame(measure);
+  }
+
+  function measure(){
+    const r = ruled.getBoundingClientRect();
+    const pr = page.getBoundingClientRect();
+    // slider value = spacing level (higher = more space); invert to lines-per-page
+    linesPerPage = 28 - parseInt(document.getElementById('lines').value,10);
+    // reference is the PAGE height (stable) — NOT the writing area — so changing
+    // margins only moves the text box and never resizes the font or line spacing
+    const ref = (pr.height>10 ? pr.height : r.height) * 0.88;
+    lineHeight = ref / linesPerPage;                  // line spacing (independent of margins)
+    const writeScale = (ref / 13) * (textPct/100);    // text size (independent of spacing & margins)
+    fontSize = writeScale * 0.74;
+    ink.style.setProperty('--lh', lineHeight+'px');
+    ink.style.setProperty('--fs', fontSize+'px');
+    ruled.style.setProperty('--lh', lineHeight+'px');
+    // top room so tall script capitals/ascenders on the first line don't clip;
+    // shift the ruled lines by the same amount so ruled paper stays aligned
+    const padTop = fontSize*0.30;
+    ink.style.paddingTop = padTop+'px';
+    ruled.style.setProperty('--rule-off', padTop+'px');
+    // hand/pencil scales with the text (writeScale), not the spacing
+    const h = activeHand();
+    handBaseW = writeScale * h.k;   // on-screen hand WIDTH (canvas sizing happens in deformHand)
+    handMeshDirty = true;           // size changed → rebuild the canvas
+    if(typeof applyBorderWidth==='function') applyBorderWidth();
+    if(typeof resizeFx==='function') resizeFx();
+    positionGutter();
+    needRender = true;
+  }
+  // overlay the left gutter shadow on the book's left edge (stage-level → never occluded by the flip)
+  function positionGutter(){
+    const g=document.getElementById('gutter'); if(!g) return;
+    const br=book.getBoundingClientRect(), sr=stage.getBoundingClientRect();
+    if(br.width<10){ g.style.display='none'; return; }
+    g.style.left=(br.left-sr.left)+'px'; g.style.top=(br.top-sr.top)+'px';
+    g.style.width=Math.round(br.width*0.09)+'px'; g.style.height=Math.round(br.height)+'px';
+    g.style.background = bindOn
+      ? 'linear-gradient(90deg, rgba(40,20,5,.42), rgba(40,20,5,0) 78%)'
+      : 'linear-gradient(90deg, rgba(20,12,4,.12), rgba(20,12,4,0) 70%)';
+    g.style.display='block';
+  }
+
+  // ruled margins as % via CSS vars on .ruled
+  function applyPaper(){
+    const color = paperColor;
+    document.querySelectorAll('.page-base,.page,#flip').forEach(e=>e.style.setProperty('--paper-bg', color));
+    book.querySelector('.page-base').style.setProperty('--paper-bg', color);
+    ruled.classList.remove('lines-ruled','lines-grid','lines-blank','margin-line');
+    if(paperStyle==='ruled'){ ruled.classList.add('lines-ruled','margin-line'); }
+    else if(paperStyle==='grid'){ ruled.classList.add('lines-grid'); }
+    else { ruled.classList.add('lines-blank'); }
+  }
+  // margins for the ruled/ink area (as fraction of page)
+  function setMargins(){
+    ruled.style.setProperty('--ml', marginL+'%');
+    ruled.style.setProperty('--mr', marginR+'%');
+    ruled.style.setProperty('--mt', marginT+'%');
+    ruled.style.setProperty('--mb', marginB+'%');   // bottom margin also sets where text auto-flips
+    // text inset: keep clear of the margin line on ruled paper, and give ornate
+    // script capitals (Pinyon/Great Vibes) room so their swashes don't clip on the left
+    ink.style.paddingLeft  = paperStyle==='ruled' ? '4%' : '0.28em';
+    ink.style.paddingRight = '0.4em';
+  }
+
+  // ---------- rendering the ink ----------
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // longest prefix of targetText that fits the writing area without overflowing
+  function pageFitLength(){
+    const saved = ink.innerHTML;
+    let lo=0, hi=targetText.length, best=0;
+    while(lo<=hi){
+      const mid=(lo+hi)>>1;
+      ink.innerHTML = esc(targetText.slice(0,mid)) + '<span class="cursor">​</span>';
+      if(ink.scrollHeight <= ink.clientHeight + 2){ best=mid; lo=mid+1; } else { hi=mid-1; }
+    }
+    ink.innerHTML = saved;
+    return best;
+  }
+
+  function renderInk(){
+    const now = performance.now();
+    // trailing chars revealed within FADE_MS render as "wet" (fading in)
+    let wetStart = revealed;
+    while(wetStart>0 && (now - (revealTimes[wetStart-1]||0)) < FADE_MS) wetStart--;
+    if(revealed - wetStart > 80) wetStart = revealed - 80;  // safety cap
+    let html = esc(targetText.slice(0, wetStart));
+    for(let i=wetStart;i<revealed;i++){
+      const age = now - (revealTimes[i]||now);
+      const o = Math.max(0.16, Math.min(1, age/FADE_MS));
+      html += `<span class="wet" style="opacity:${o.toFixed(2)}">${esc(targetText[i]||'')}</span>`;
+    }
+    ink.innerHTML = html + '<span class="cursor" id="cur">​</span>';
+    // page-full detection
+    const overflow = ink.scrollHeight > ink.clientHeight + 2;
+    if(reviewIndex===null){
+      pagefull.style.display = overflow ? 'block' : 'none';
+      // The moment the WRITTEN text reaches the bottom, turn the page and carry the
+      // overflow (plus anything typed ahead) onto the next page. This fires off the
+      // written content, not "all typed text revealed", so typing fast can never run
+      // past the end. Gated on auto-turn (on by default).
+      if(overflow && !turning && document.getElementById('autoTurn').checked){
+        const fit = pageFitLength();
+        if(fit > 0 && fit < targetText.length) turnPage(1, fit);   // fit===0 (nothing fits) → leave it, avoid a flip loop
+      }
+    }
+  }
+
+  function positionHand(){
+    const h = activeHand(), el = h.el;
+    if(!handVisible || reviewIndex!==null){ el.classList.add('hidden'); return; }
+    const cur = document.getElementById('cur');
+    if(!cur){ return; }
+    const cr = cur.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect();
+    // writing point = baseline at the cursor
+    let x = cr.left - sr.left;
+    // baseline within the line box, tracking the actual font size (decoupled from spacing)
+    let y = cr.top - sr.top + lineHeight*0.5 + fontSize*0.42;
+    const now = performance.now();
+    nibX = x; nibY = y;                       // sparkles emit from the writing point
+    // detect carriage-return / wrap (big leftward jump) → lift the pen
+    if(lastHX!==null && (x - lastHX) < -lineHeight*1.5) liftStart = now;
+    lastHX = x;
+    // jitter while actively writing
+    if(writing){
+      x += (Math.sin(now/40)*0.8);
+      y += (Math.cos(now/33)*0.8);
+    }
+    // pen-lift bob when starting a new line
+    const lp = (now - liftStart)/240;
+    if(lp>=0 && lp<1){ const s=Math.sin(Math.PI*lp); y -= s*lineHeight*0.7; x += s*lineHeight*0.22; }
+    const w = handBaseW*handScale;            // on-screen image WIDTH
+    // image may be non-square (extended arms are taller) → use its real aspect for the vertical offset
+    const ar = (handimg.naturalWidth>0) ? (handimg.naturalHeight/handimg.naturalWidth) : (curHandDef.ar||1);
+    const hPx = w*ar;                         // on-screen image HEIGHT
+    const tipPx = { x: h.fx*w, y: h.fy*hPx };
+    // quill axis: from the nib up to the feather top (sparkles emit all along it)
+    const handLeft = x - tipPx.x, handTop = y - tipPx.y;
+    featherX = handLeft + 0.50*w; featherY = handTop + 0.20*hPx;
+    quillTopX = handLeft + 0.55*w; quillTopY = handTop + 0.04*hPx;
+    // per-character writing "stroke": the hand rocks a touch around the nib each char
+    // (alternating, like a 2-frame writing animation) so it looks like it's writing
+    let strokeRot = 0;
+    const sinceStroke = now - strokeTime;
+    if(sinceStroke < 110){ const p=sinceStroke/110; strokeRot = (strokeToggle?1:-1) * Math.sin(Math.PI*p) * 2.2; }
+    // secondary-motion spring: drives ONLY the feather (see two-layer split below).
+    // The hand/arm stays rigid — we don't want the whole hand to look jelly, just the feather.
+    { const dtS = Math.min(50, now - (prevSpringT||now)); prevSpringT = now;
+      const f = dtS/16.67;
+      if(prevNibSX!=null){
+        const vx = (nibX - prevNibSX), vy = (nibY - prevNibSY);
+        springVel += (-vx*1.3 - vy*0.30) / Math.max(1, lineHeight*0.5);   // motion (scaled to text size) drives it
+      }
+      prevNibSX = nibX; prevNibSY = nibY;
+      springVel += (-springAngle*0.035) * f;    // low stiffness → loose, floppy feather
+      springVel *= Math.pow(0.905, f);           // light damping → it sways & overshoots before settling
+      springAngle += springVel * f;
+      springAngle = Math.max(-18, Math.min(18, springAngle));
+    }
+    el.classList.remove('hidden');
+    const Nl = tipPx;                              // nib, image-local px (on-screen scale)
+
+    // ---- bone-spine feather deform -----------------------------------------
+    // ONE image, redrawn on the canvas with a spring-driven bend. A "spine" runs
+    // up the quill; the GRIP is the fixed root (the hand + nib stay rigid), and the
+    // rows above it are skinned with a curve that ramps to the feather tip — so the
+    // plume flops/whips while the hand and nib don't move. The whole canvas still
+    // rocks rigidly about the nib for the per-char stroke. Non-quill hands stay flat.
+    const isQuill = (curHandDef && curHandDef.type === 'Quill');
+    // grip = where the bare feather enters the hand (fraction from the TOP). The plume
+    // is only the top ~20% of these images; the hand/nib sit below. The hinge MUST be
+    // up here so only the feather rotates — too low and the whole hand pivots.
+    const gripV  = isQuill ? (curHandDef.grip!=null ? curHandDef.grip : 0.21) : 0;
+    const tipDeg = isQuill ? Math.max(-13,Math.min(13, (springAngle + springVel*4)*0.5)) : 0;  // total tip bend angle: halved + hard-clamped to ±13° so it never over-bends
+
+    // canvas is padded so the swinging feather never clips the edges
+    const dpr  = Math.min(2, window.devicePixelRatio||1);
+    const PADX = Math.round(w*0.75), PADY = Math.round(hPx*0.05);
+    const cw = Math.round(w + 2*PADX), chh = Math.round(hPx + PADY);
+    if(handcanvas._cw!==cw || handcanvas._ch!==chh){
+      handcanvas.width  = Math.round(cw*dpr);  handcanvas.height = Math.round(chh*dpr);
+      handcanvas.style.width = cw+'px';        handcanvas.style.height = chh+'px';
+      handcanvas._cw=cw; handcanvas._ch=chh; handMeshDirty = true;
+    }
+    // place the canvas so the nib (at PADX+Nl.x, PADY+Nl.y inside it) lands on the
+    // cursor; strokeRot rocks the whole hand rigidly about the nib
+    el.style.transformOrigin = `${(PADX+Nl.x).toFixed(1)}px ${(PADY+Nl.y).toFixed(1)}px`;
+    el.style.transform = `translate(${(handLeft-PADX).toFixed(2)}px, ${(handTop-PADY).toFixed(2)}px) rotate(${strokeRot.toFixed(2)}deg)`;
+
+    // redraw the deformed image (skip frames when fully settled & nothing changed)
+    const moving = isQuill && (Math.abs(springAngle)>0.02 || Math.abs(springVel)>0.02);
+    if(handMeshDirty || moving){
+      handctx.setTransform(dpr,0,0,dpr,0,0);
+      handctx.clearRect(0,0,cw,chh);
+      if(handimg.complete && handimg.naturalWidth>0){
+        const natW=handimg.naturalWidth, natH=handimg.naturalHeight;
+        if(!isQuill){
+          handctx.drawImage(handimg, PADX, PADY, w, hPx);          // pencils: rigid, undeformed
+        } else {
+          // hand + lower shaft (grip → bottom): rigid, drawn once
+          handctx.drawImage(handimg, 0, gripV*natH, natW, natH-gripV*natH,
+                                     PADX, PADY+gripV*hPx, w, hPx-gripV*hPx);
+          // feather (top → grip): the whole plume is ONE rigid piece, rotated about the
+          // grip pivot. A single rigid rotation can't stretch, compress, or gap — it
+          // just hinges at the grip. (Multi-segment chains fan open at the joints, which
+          // tore the feather apart, so we keep it one solid bone.)
+          const shaftTopV=0.04, shaftTopX=0.55*w;
+          const spineGripX = Nl.x + (gripV - h.fy)/(shaftTopV - h.fy) * (shaftTopX - Nl.x);
+          const gpx = PADX + spineGripX, gpy = PADY + gripV*hPx;   // grip pivot (canvas px)
+          const bendRad = tipDeg*Math.PI/180;
+          const ov = hPx*0.015;                                    // tiny overlap to hide the hinge seam (kept small so it doesn't drag hand pixels)
+          handctx.save();
+          handctx.translate(gpx, gpy);
+          handctx.rotate(bendRad);
+          handctx.translate(-gpx, -gpy);
+          handctx.drawImage(handimg, 0, 0, natW, (gripV*hPx+ov)/hPx*natH,
+                                     PADX, PADY, w, gripV*hPx+ov);
+          handctx.restore();
+        }
+      }
+      if(!moving) handMeshDirty = false;   // settled → stop redrawing until something changes
+    }
+  }
+
+  // lock-in: a shimmer sweeps along the line you just finished (on Enter)
+  function lockLineNow(){
+    playChime();
+    if(!sparkleColors) return;
+    const c = document.getElementById('cur'); if(!c) return;
+    const sr = stage.getBoundingClientRect();
+    const cr = c.getBoundingClientRect();
+    const il = ink.getBoundingClientRect().left - sr.left;
+    const xEnd = cr.left - sr.left;
+    const yMid = (cr.top - sr.top) + lineHeight*0.72;
+    const span = xEnd - il;
+    if(span < lineHeight*0.6) return;     // empty/very short line → no sweep (would just be a dot)
+    // distribute by LENGTH so density is constant — a short line gets few sparkles, a
+    // long line more. (Never a fixed 16 piled onto a tiny span.)
+    const n = Math.max(4, Math.min(24, Math.round(span/(lineHeight*0.5))));
+    for(let i=0;i<=n;i++){
+      const px = il + span*(i/n);
+      emitSparkle(px, yMid, lineHeight*0.10, {up:0.12, slow:true, star:true});
+    }
+  }
+
+  // ---------- writing loop ----------
+  function loop(t){
+    const dt = t - (lastTime||t); lastTime = t;
+
+    if(reviewIndex===null){
+      // clamp on backspace
+      if(revealed > targetText.length){ revealed = targetText.length; needRender = true; }
+
+      if(!turning && revealed < targetText.length){
+        charAccum += dt;
+        let interval = 1000/Math.max(1,speed);
+        let guard = 0;
+        while(revealed < targetText.length && charAccum >= interval && guard < 200){
+          const ch = targetText[revealed];
+          charAccum -= interval;
+          // natural pauses
+          if(ch==='\n'){ charAccum -= interval*2.2; renderInk(); lockLineNow(); }   // render the finished line first so the cursor is at its END, then sweep the lock-in shimmer along it
+          else if(ch===' ') charAccum -= interval*0.6;
+          else if('.,!?;:'.includes(ch)) charAccum -= interval*1.2;
+          revealTimes[revealed] = t;
+          revealed++; guard++;
+          writing = true; lastWriteAt = t;
+          strokeTime = t; strokeToggle = !strokeToggle;   // per-char writing stroke
+          scratch(ch);
+        }
+        needRender = true;
+      } else {
+        charAccum = 0;
+      }
+      // keep re-rendering while the freshest strokes are still drying
+      const li = revealed-1;
+      if(li>=0 && (t - (revealTimes[li]||0)) < FADE_MS) needRender = true;
+    }
+
+    if(needRender){ renderInk(); needRender = false; }
+    if(t - lastWriteAt > 110) writing = false;
+    updateWriteSound();
+    positionHand();
+    updateFx(dt, t);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- input ----------
+  feed.addEventListener('input', ()=>{
+    if(reviewIndex!==null) return;            // ignore typing while reviewing
+    targetText = feed.value;
+    needRender = true;
+  });
+  feed.addEventListener('keydown', (e)=>{
+    if(e.key==='Tab'){ e.preventDefault(); turnPage(1); }
+    else if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); turnPage(1); }
+  });
+  feed.addEventListener('focus', ()=>{ typehint.style.opacity='0'; });
+  feed.addEventListener('blur',  ()=>{ if(reviewIndex===null && !typingPaused) typehint.style.opacity='1'; });
+
+  // ---------- pause / resume typing (Esc) ----------
+  let typingPaused = false;
+  const pausehint = document.getElementById('pausehint');
+  function setPaused(p){
+    typingPaused = p;
+    const b = document.getElementById('pauseBtn');
+    if(p){ feed.blur(); pausehint.style.display='block'; typehint.style.opacity='0'; b.classList.remove('on'); b.textContent='▶ Type'; }
+    else { pausehint.style.display='none'; feed.focus(); b.classList.add('on'); b.textContent='⏸ Type'; }
+  }
+  document.getElementById('pauseBtn').addEventListener('click',()=>{ setPaused(!typingPaused); });
+
+  // refocus the feed on any click that isn't a control (and resume if paused)
+  document.addEventListener('mousedown',(e)=>{
+    if(e.target.closest('#controls') || e.target.closest('#showbar')) return;
+    if(reviewIndex!==null) return;
+    if(typingPaused){ setPaused(false); return; }
+    setTimeout(()=>feed.focus(), 0);
+  });
+
+  // global keys
+  document.addEventListener('keydown',(e)=>{
+    if(e.key==='Escape'){ e.preventDefault(); setPaused(!typingPaused); return; }   // toggle typing
+    // Hide/show the UI for a clean stream capture. F9 (not a letter — 'h' is far too
+    // common to type) so it works even while the journal has focus.
+    if(e.key==='F9'){ e.preventDefault(); toggleUI(); }
+  });
+
+  // ---------- page turn ----------
+  let turning = false, turnRAF = 0;
+  function turnPage(dir, keepLen){
+    if(reviewIndex!==null || turning){ return; }
+    turning = true;   // set first: the measuring renderInk() below must not re-enter via the overflow auto-turn
+    // Decide how much text stays on THIS page; the rest is carried to the next one.
+    let keep;
+    if(typeof keepLen==='number'){
+      keep = Math.max(0, Math.min(keepLen, targetText.length));
+    } else {
+      // manual turn (Tab/button): if the page is overrun, keep only what fits and carry the rest
+      revealed = targetText.length; renderInk();
+      keep = (ink.scrollHeight > ink.clientHeight + 2) ? pageFitLength() : targetText.length;
+    }
+    revealed = keep; renderInk();          // show exactly the kept text on the turning page
+    playFlip();
+    cancelAnimationFrame(turnRAF);
+    flip.innerHTML = '';
+    const r = page.getBoundingClientRect();
+    const W = r.width, H = r.height, N = 10, s = W / N;
+    // build N nested vertical strips; each shows one column of a full-page clone.
+    // nesting makes each strip pivot off the previous one's edge → a smooth curve.
+    const strips = [], shades = [];
+    let parent = flip;
+    for(let i=0;i<N;i++){
+      const strip = document.createElement('div'); strip.className='strip';
+      strip.style.left = (i===0?0:s)+'px'; strip.style.width = s+'px'; strip.style.height = H+'px';
+      const clip = document.createElement('div'); clip.className='clip';
+      const slice = page.cloneNode(true); slice.removeAttribute('id');
+      slice.style.position='absolute'; slice.style.margin='0'; slice.style.top='0';
+      slice.style.left = (-i*s)+'px'; slice.style.width = W+'px'; slice.style.height = H+'px';
+      const shade = document.createElement('div'); shade.className='shade';
+      clip.appendChild(slice); clip.appendChild(shade); strip.appendChild(clip);
+      parent.appendChild(strip); parent = strip;
+      strips.push(strip); shades.push(shade);
+    }
+    flip.style.display='block';
+    // commit the kept text + start a fresh page underneath carrying the remainder
+    const rest = targetText.slice(keep);
+    pages.push(targetText.slice(0, keep));
+    feed.value=rest; targetText=rest; revealed=0; revealTimes=[]; renderInk();
+    book.style.setProperty('--book-rot', (Math.random()*0.9 - 0.45).toFixed(2)+'deg');
+    pagefull.style.display='none';
+    // animate: strip 0 swings around the spine; strips 1..N add a curl that
+    // peaks mid-turn and bends most toward the free edge (real paper feel)
+    const start = performance.now(), DUR = 760;
+    const ease = t => t<.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+    function frame(now){
+      let p = (now-start)/DUR; if(p>1) p=1;
+      const e = ease(p);
+      const main = -e*178;
+      const curl = Math.sin(p*Math.PI);            // 0 → 1 → 0 over the turn
+      strips[0].style.transform = `rotateY(${main}deg)`;
+      let cum = main;
+      for(let i=1;i<N;i++){
+        const t = i/(N-1);
+        const ang = -curl * 34 * t;                 // more bend toward the free edge
+        strips[i].style.transform = `rotateY(${ang}deg)`;
+        cum += ang;
+        const d = Math.max(0, Math.min(.45, (-cum)/210));
+        shades[i].style.background = `rgba(25,15,5,${d.toFixed(3)})`;
+      }
+      if(p<1){ turnRAF = requestAnimationFrame(frame); }
+      else { flip.style.display='none'; flip.innerHTML=''; turning=false; }
+    }
+    turnRAF = requestAnimationFrame(frame);
+    feed.focus();
+  }
+
+  // ---------- review history ----------
+  function showReview(idx){
+    reviewIndex = idx;
+    handcanvas.classList.add('hidden');
+    pagefull.style.display='none';
+    ink.innerHTML = esc(pages[idx]||'');
+    reviewbar.style.display='block';
+    reviewbar.innerHTML = `Reviewing page ${idx+1} / ${pages.length} — `+
+      `<a href="#" id="rPrev" style="color:#cfe">◀</a> `+
+      `<a href="#" id="rNext" style="color:#cfe">▶</a> `+
+      `<a href="#" id="rLive" style="color:#fff;font-weight:600">Resume ✍️</a>`;
+    document.getElementById('rPrev').onclick=(e)=>{e.preventDefault(); if(reviewIndex>0) showReview(reviewIndex-1);};
+    document.getElementById('rNext').onclick=(e)=>{e.preventDefault(); if(reviewIndex<pages.length-1) showReview(reviewIndex+1); else resumeLive();};
+    document.getElementById('rLive').onclick=(e)=>{e.preventDefault(); resumeLive();};
+  }
+  function resumeLive(){
+    reviewIndex=null; reviewbar.style.display='none';
+    feed.value=targetText; revealed=targetText.length; needRender=true; renderInk();
+    feed.focus();
+  }
+  function reviewPrev(){
+    if(reviewIndex===null){ if(pages.length===0) return; showReview(pages.length-1); }
+    else if(reviewIndex>0){ showReview(reviewIndex-1); }
+  }
+
+  // ---------- sound ----------
+  // PRIMARY: HTML5 <audio> playback of sound files (reliable; works on file://).
+  // FALLBACK: WebAudio synthesis if a file is missing/blocked.
+  let actx=null, master=null;
+  function ensureAudio(){
+    if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } }
+    if(!master){ master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination); }
+    if(actx.state==='suspended') actx.resume();
+    return actx;
+  }
+  ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(actx && actx.state==='suspended') actx.resume(); }));
+
+  // sound files, pooled so they can overlap (override paths via window.STREAMZ_SFX)
+  let SFX_FILES = { scratch:'assets/sfx/scratch.wav', flip:'assets/sfx/flip.wav', chime:'assets/sfx/chime.wav', writing:'assets/sfx/writing.wav' };
+  const SFX_VOL = { scratch:0.3, flip:0.75, chime:0.8, writing:0.4 };
+  const sfxPool = {}, sfxOK = {}, poolIdx = {};
+  let writeLoop = null, writeFade = 0;    // one looping element for the continuous writing sound
+  function initAudioEls(){
+    if(window.STREAMZ_SFX) SFX_FILES = Object.assign({}, SFX_FILES, window.STREAMZ_SFX);
+    for(const k of ['scratch','flip','chime']){
+      sfxPool[k]=[]; sfxOK[k]=false; poolIdx[k]=0;
+      const url=SFX_FILES[k]; if(!url) continue;
+      const n=3;
+      for(let i=0;i<n;i++){ const a=new Audio(url); a.preload='auto'; a.volume=SFX_VOL[k]||0.7;
+        a.addEventListener('canplaythrough',()=>{ sfxOK[k]=true; },{once:true});
+        sfxPool[k].push(a); }
+    }
+    sfxOK.writing=false;
+    if(SFX_FILES.writing){ writeLoop=new Audio(SFX_FILES.writing); writeLoop.loop=true; writeLoop.preload='auto'; writeLoop.volume=SFX_VOL.writing;
+      writeLoop.addEventListener('canplaythrough',()=>{ sfxOK.writing=true; },{once:true}); }
+  }
+  function playFile(name){
+    const pool=sfxPool[name]; if(!pool||!pool.length) return false;
+    const a=pool[(poolIdx[name]++)%pool.length];
+    try{ a.currentTime=0; const p=a.play(); if(p&&p.catch)p.catch(()=>{}); return true; }catch(e){ return false; }
+  }
+  // continuous writing sound: play the loop while writing, fade out when it pauses (one play/pause per burst)
+  function updateWriteSound(){
+    if(!writeLoop || !sfxOK.writing) return;
+    const want = writing && soundOn && soundKind!=='none' && reviewIndex===null;
+    if(want){
+      if(writeFade){ clearInterval(writeFade); writeFade=0; }
+      writeLoop.volume = SFX_VOL.writing;
+      if(writeLoop.paused){ const p=writeLoop.play(); if(p&&p.catch)p.catch(()=>{}); }
+    } else if(!writeLoop.paused && !writeFade){
+      writeFade = setInterval(()=>{ writeLoop.volume=Math.max(0,writeLoop.volume-0.08);
+        if(writeLoop.volume<=0.001){ writeLoop.pause(); writeLoop.volume=SFX_VOL.writing; clearInterval(writeFade); writeFade=0; } }, 22);
+    }
+  }
+  let lastScratchAt = 0;
+  function scratch(ch){
+    if(sfxOK.writing) return;   // the continuous writing loop handles the sound (no per-char play)
+    if(soundKind==='none' || !soundOn || ch===' '||ch==='\n') return;
+    const now = performance.now();
+    if(now - lastScratchAt < 110) return;   // throttle fallback
+    lastScratchAt = now;
+    if(sfxOK.scratch){ playFile('scratch'); return; }
+    try{
+      if(!ensureAudio()) return;
+      const pen = soundKind==='pen';
+      const dur = pen ? (0.03+Math.random()*0.02) : (0.05+Math.random()*0.035);
+      const buf = actx.createBuffer(1, actx.sampleRate*dur, actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i=0;i<d.length;i++){ d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,2); }
+      const src = actx.createBufferSource(); src.buffer=buf;
+      const g = actx.createGain(); g.gain.value = pen ? 0.09 : 0.14;
+      const f = actx.createBiquadFilter();
+      if(pen){ f.type='lowpass'; f.frequency.value=900+Math.random()*400; f.Q.value=0.6; }
+      else   { f.type='bandpass'; f.frequency.value=2200+Math.random()*800; f.Q.value=0.8; }
+      src.connect(f); f.connect(g); g.connect(master); src.start();
+    }catch(e){}
+  }
+  function playFlip(){
+    if(!soundOn || soundKind==='none') return;
+    if(sfxOK.flip){ playFile('flip'); return; }
+    try{
+      if(!ensureAudio()) return;
+      const t=actx.currentTime, dur=0.32;
+      const buf=actx.createBuffer(1, actx.sampleRate*dur, actx.sampleRate); const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++){ const u=i/d.length; d[i]=(Math.random()*2-1)*Math.pow(1-u,1.6); }
+      const src=actx.createBufferSource(); src.buffer=buf;
+      const f=actx.createBiquadFilter(); f.type='bandpass'; f.Q.value=0.7;
+      f.frequency.setValueAtTime(700,t); f.frequency.exponentialRampToValueAtTime(2600,t+dur);
+      const g=actx.createGain(); g.gain.value=0.34;
+      src.connect(f); f.connect(g); g.connect(master); src.start(t);
+    }catch(e){}
+  }
+  function playChime(){
+    if(!soundOn || soundKind==='none') return;
+    if(sfxOK.chime){ playFile('chime'); return; }
+    try{
+      if(!ensureAudio()) return;
+      const t0=actx.currentTime, notes=[1318,1760,2637];
+      notes.forEach((fr,i)=>{
+        const o=actx.createOscillator(); o.type='sine'; o.frequency.value=fr;
+        const g=actx.createGain(); const t=t0+i*0.05;
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.22,t+0.01); g.gain.exponentialRampToValueAtTime(0.0008,t+0.45);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t+0.5);
+      });
+    }catch(e){}
+  }
+  function testSounds(){
+    ensureAudio();
+    const ready = sfxOK.writing||sfxOK.flip||sfxOK.chime;
+    toast(ready ? '🔊 playing sound files…' : '🔊 playing (synth)… if silent, unmute the tab');
+    const on=soundOn, k=soundKind; soundOn=true; if(soundKind==='none') soundKind='pencil';
+    if(sfxOK.writing && writeLoop){ writeLoop.volume=SFX_VOL.writing; const p=writeLoop.play(); if(p&&p.catch)p.catch(()=>{}); setTimeout(()=>writeLoop.pause(),950); }
+    else { scratch('a'); setTimeout(()=>scratch('b'),120); setTimeout(()=>scratch('c'),240); }
+    setTimeout(playFlip,1100); setTimeout(playChime,1700);
+    setTimeout(()=>{ soundOn=on; soundKind=k; }, 2400);
+  }
+
+  // ---------- magical sparkles ----------
+  const fx = document.getElementById('fx');
+  const fctx = fx.getContext('2d');
+  let particles = [];
+  let sparkleOn = false;        // is the effect currently emitting
+  let fxUserPref = null;        // null = follow theme; true/false = user override
+  let sparkleColors = null;     // active palette (null = none)
+  let dotSprites = [], starSprites = [];
+  let nibX=0,nibY=0,featherX=0,featherY=0,quillTopX=0,quillTopY=0;
+  let emitAcc=0, featherAcc=0, fxW=0, fxH=0;
+  let lastSparkRevealed=null;   // emit nib sparkles only as new characters are written
+
+  function rgba(hex,a){ hex=(''+hex).replace('#',''); const n=parseInt(hex,16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+  function makeDot(color){ const c=document.createElement('canvas'); c.width=c.height=48; const g=c.getContext('2d');
+    const gr=g.createRadialGradient(24,24,0,24,24,24);
+    gr.addColorStop(0,'rgba(255,255,255,.95)'); gr.addColorStop(.3,rgba(color,.85)); gr.addColorStop(.7,rgba(color,.18)); gr.addColorStop(1,rgba(color,0));
+    g.fillStyle=gr; g.fillRect(0,0,48,48); return c; }
+  function makeStar(color){ const c=document.createElement('canvas'); c.width=c.height=64; const g=c.getContext('2d'); g.translate(32,32);
+    const gr=g.createRadialGradient(0,0,0,0,0,14); gr.addColorStop(0,'rgba(255,255,255,.9)'); gr.addColorStop(.5,rgba(color,.5)); gr.addColorStop(1,rgba(color,0));
+    g.fillStyle=gr; g.beginPath(); g.arc(0,0,14,0,7); g.fill();
+    const spike=()=>{ const lg=g.createLinearGradient(0,-30,0,2); lg.addColorStop(0,rgba(color,0)); lg.addColorStop(.7,rgba(color,.85)); lg.addColorStop(1,'rgba(255,255,255,.95)'); g.fillStyle=lg; g.beginPath(); g.moveTo(0,-30); g.lineTo(3.2,0); g.lineTo(0,4); g.lineTo(-3.2,0); g.closePath(); g.fill(); };
+    for(let i=0;i<4;i++){ g.save(); g.rotate(i*Math.PI/2); spike(); g.restore(); }
+    g.fillStyle='rgba(255,255,255,.95)'; g.beginPath(); g.arc(0,0,2.4,0,7); g.fill(); return c; }
+  function buildSparkleSprites(colors){
+    sparkleColors=(colors&&colors.length)?colors.slice():null; dotSprites=[]; starSprites=[];
+    if(sparkleColors){ for(const c of sparkleColors){ dotSprites.push(makeDot(c)); starSprites.push(makeStar(c)); } }
+  }
+  function updateFxBtn(){ document.getElementById('fxBtn').classList.toggle('on', sparkleOn); }
+  // called by applyTheme: theme provides a palette (or none)
+  function setThemeSparkle(colors){
+    buildSparkleSprites(colors);
+    sparkleOn = (fxUserPref!=null) ? fxUserPref : !!sparkleColors;
+    if(sparkleOn && !sparkleColors) buildSparkleSprites(['#ffe9b0','#ffd27a','#fff3cf']);
+    if(!sparkleOn) particles.length=0;
+    updateFxBtn();
+  }
+  function resizeFx(){
+    const r=stage.getBoundingClientRect(); const dpr=Math.min(2, window.devicePixelRatio||1);
+    fxW=r.width; fxH=r.height; fx.width=Math.round(fxW*dpr); fx.height=Math.round(fxH*dpr);
+    fctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  function emitSparkle(x,y,spread,o){ if(particles.length>320||!sparkleColors) return; o=o||{};
+    // local-overlap guard: refuse to spawn where bright particles are already clustered,
+    // so additive blending can never build into a round glowing blob at one spot
+    { const r2=(lineHeight*0.32)*(lineHeight*0.32); let near=0;
+      for(let i=0;i<particles.length;i++){ const p=particles[i];
+        if(p.life<0.3) continue;
+        const dx=p.x-x, dy=p.y-y;
+        if(dx*dx+dy*dy < r2 && ++near >= 6) return;   // 6+ bright sparkles already here → skip
+      } }
+    const u=lineHeight*0.01;
+    particles.push({ x:x+(Math.random()-0.5)*spread, y:y+(Math.random()-0.5)*spread,
+      vx:(Math.random()-0.5)*(o.slow?1.2:2.4)*u, vy:(-(o.up||0.4)-Math.random()*0.7)*(o.slow?1.4:2.6)*u,
+      life:1, decay:(o.slow?0.7:1.0)+Math.random()*0.7, size:lineHeight*(0.05+Math.random()*0.07)*(o.star?1.4:1),
+      ci:Math.floor(Math.random()*sparkleColors.length), star:(o.star && Math.random()<0.7), tw:Math.random()*6.28 });
+  }
+  function updateFx(dt,now){
+    if(fx.width===0) resizeFx();
+    const f=Math.min(3, dt/16.67);
+    if(sparkleOn && sparkleColors && sparkleAmt>0 && handVisible && reviewIndex===null){
+      // NIB: emit ONLY when a new character is actually written (the reveal counter
+      // grows). This ignores the pen's idle jitter and any dwell, so sparkles never
+      // pile onto a stationary tip and sum into a round additive glow.
+      if(lastSparkRevealed==null || revealed<lastSparkRevealed) lastSparkRevealed=revealed;  // (re)sync on load/backspace
+      if(writing && revealed>lastSparkRevealed){
+        const chars=revealed-lastSparkRevealed;
+        const n=Math.min(7, Math.max(1, Math.round(chars*1.4*sparkleAmt)));  // ~1–2 sparkles per char
+        for(let s=0;s<n;s++) emitSparkle(nibX,nibY,lineHeight*0.22,{up:0.5,star:true});
+        lastSparkRevealed=revealed;   // advance ONLY after emitting, so no char's burst is skipped
+      }
+      // FEATHER: scattered along the whole quill axis (a line, not a point → no pile)
+      featherAcc+=dt; const fi=(writing?90:200)/sparkleAmt;
+      while(featherAcc>fi){ featherAcc-=fi;
+        const t=0.15+Math.random()*0.9;                     // spawn up & down the quill
+        const ex=nibX+(quillTopX-nibX)*t, ey=nibY+(quillTopY-nibY)*t;
+        emitSparkle(ex,ey,lineHeight*0.32,{up:0.25,slow:true,star:true});
+      }
+    }
+    fctx.clearRect(0,0,fxW,fxH);
+    if(!particles.length) return;
+    fctx.globalCompositeOperation='lighter';
+    for(let i=particles.length-1;i>=0;i--){ const p=particles[i];
+      p.x+=p.vx*f; p.y+=p.vy*f; p.vy+=0.0002*lineHeight*f; p.vx*=Math.pow(0.985,f); p.life-=p.decay*(dt/1000);
+      if(p.life<=0){ particles.splice(i,1); continue; }
+      const tw=0.5+0.5*Math.sin(p.tw+now*0.012);
+      fctx.globalAlpha=Math.max(0,Math.min(1,p.life))*tw;
+      const spr=(p.star?starSprites:dotSprites)[p.ci]; const d=p.size*6;
+      if(spr) fctx.drawImage(spr, p.x-d/2, p.y-d/2, d, d);
+    }
+    fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
+  }
+  document.getElementById('fxBtn').addEventListener('click',(e)=>{
+    sparkleOn=!sparkleOn; fxUserPref=sparkleOn;
+    if(sparkleOn && !sparkleColors) buildSparkleSprites(['#ffe9b0','#ffd27a','#fff3cf']);
+    if(!sparkleOn) particles.length=0;
+    updateFxBtn(); saveSettings();
+  });
+
+  // ---------- animated book glow ----------
+  let glowOn = false, glowUserPref = null;
+  const bookglow = document.getElementById('bookglow');
+  function updateGlowBtn(){ document.getElementById('glowBtn').classList.toggle('on', glowOn); }
+  function setGlow(on){ glowOn=on; stage.classList.toggle('glow-on', on); updateGlowBtn(); }
+  function setThemeGlow(color){
+    stage.style.setProperty('--glow-color', color || 'rgba(255,210,120,.7)');  // cascades to page + aura + shine
+    const has = !!color;
+    setGlow( (glowUserPref!=null) ? glowUserPref : has );
+  }
+  document.getElementById('glowBtn').addEventListener('click',()=>{
+    glowUserPref = !glowOn; setGlow(!glowOn); saveSettings();
+  });
+
+  // ---------- bound-book (tome) toggle ----------
+  let bindOn=false, bindUserPref=null;
+  function updateBindBtn(){ document.getElementById('bindBtn').classList.toggle('on', bindOn); }
+  function setBind(on){ bindOn=on; book.classList.toggle('tome', on); updateBindBtn(); setTimeout(()=>{layout(); positionGutter();},0); }
+  function setThemeBook(style){ const has = style==='tome'; setBind( (bindUserPref!=null) ? bindUserPref : has ); }
+  document.getElementById('bindBtn').addEventListener('click',()=>{
+    bindUserPref = !bindOn; setBind(!bindOn); saveSettings();
+  });
+
+  // ---------- settings persistence (localStorage) ----------
+  const LS_KEY = 'streamz-journal:settings';
+  let settingsReady = false;
+  function saveSettings(){
+    if(!settingsReady) return;
+    try{
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        theme: document.getElementById('theme').value,
+        ar: AR.w+':'+AR.h,
+        paperStyle, paperColor,
+        font: document.getElementById('font').value,
+        ink: document.getElementById('inkColor').value,
+        speed, lines: +document.getElementById('lines').value, textPct,
+        mL:marginL, mR:marginR, mT:marginT, mB:marginB, fxAmt:Math.round(sparkleAmt*100),
+        hand: handMode, handScale, handVisible,
+        bgEnabled, soundOn, sparkle: fxUserPref, glow: glowUserPref, bind: bindUserPref,
+      }));
+    }catch(e){}
+  }
+  function loadSettings(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY)||'null'); }catch(e){ return null; }
+  }
+  // Restore saved per-control values on top of a theme.
+  // themeOwned (paper/font/ink/hand) only restore when we're loading the user's own
+  // saved theme — so a shared ?theme= link shows that theme cleanly. Global prefs
+  // (speed, lines, hand size/visibility, bg, sound) always restore.
+  function applySettings(s, includeThemeOwned){
+    if(!s) return;
+    if(includeThemeOwned){
+      if(s.paperStyle){ paperStyle=s.paperStyle; document.getElementById('paperStyle').value=paperStyle; applyPaper(); setMargins(); }
+      if(s.paperColor) setPaperColor(s.paperColor);
+      if(s.font) setFont(s.font);
+      if(s.ink)  setInk(s.ink);
+      if(s.hand){ setHandMode(s.hand); syncHandSelect(); }
+    }
+    if(typeof s.speed==='number'){ speed=s.speed; speedR.value=speed; speedV.textContent=speed; }
+    if(typeof s.lines==='number'){ linesR.value=s.lines; linesV.textContent=s.lines; measure(); }
+    if(typeof s.textPct==='number'){ textPct=s.textPct; textR.value=s.textPct; textV.textContent=s.textPct; measure(); }
+    if(typeof s.mL==='number'){ marginL=s.mL; mLs.value=s.mL; }
+    if(typeof s.mR==='number'){ marginR=s.mR; mRs.value=s.mR; }
+    if(typeof s.mT==='number'){ marginT=s.mT; mTs.value=s.mT; }
+    if(typeof s.mB==='number'){ marginB=s.mB; mBs.value=s.mB; }
+    if(typeof s.fxAmt==='number'){ sparkleAmt=s.fxAmt/100; fxAmtR.value=s.fxAmt; }
+    setMargins(); measure();
+    if(typeof s.handScale==='number'){ handScale=s.handScale; handR.value=Math.round(handScale*100); handV.textContent=handR.value; activeHand().el.style.width=(handBaseW*handScale)+'px'; }
+    if(typeof s.handVisible==='boolean'){ handVisible=s.handVisible; document.getElementById('handToggle').classList.toggle('on',handVisible); }
+    if(typeof s.bgEnabled==='boolean'){ bgEnabled=s.bgEnabled; renderBg(); document.getElementById('deskBtn').classList.toggle('on',bgEnabled); }
+    if(typeof s.soundOn==='boolean'){ soundOn=s.soundOn; const b=document.getElementById('soundBtn'); b.classList.toggle('on',soundOn); b.textContent = soundOn?'🔊 Sound':'🔇 Sound'; }
+    if(typeof s.sparkle==='boolean'){ fxUserPref=s.sparkle; sparkleOn=s.sparkle; if(sparkleOn && !sparkleColors) buildSparkleSprites(['#ffe9b0','#ffd27a','#fff3cf']); if(!sparkleOn) particles.length=0; updateFxBtn(); }
+    if(typeof s.glow==='boolean'){ glowUserPref=s.glow; setGlow(s.glow); }
+    if(typeof s.bind==='boolean'){ bindUserPref=s.bind; setBind(s.bind); }
+  }
+
+  // ---------- UI controls ----------
+  function setAR(s){
+    const [w,h] = s.split(':').map(Number);
+    AR = {w,h};
+    document.querySelectorAll('#aspectSeg .btn').forEach(b=>b.classList.toggle('on', b.dataset.ar===s));
+    layout();
+  }
+  document.getElementById('aspectSeg').addEventListener('click',(e)=>{
+    const b = e.target.closest('.btn'); if(b) setAR(b.dataset.ar);
+  });
+
+  document.getElementById('paperStyle').addEventListener('change',(e)=>{
+    paperStyle=e.target.value; applyPaper(); setMargins(); needRender=true;
+  });
+  document.getElementById('paperColor').addEventListener('change',(e)=>{ paperColor=e.target.value; applyPaper(); });
+
+  // ---------- populate Theme + Hand selects ----------
+  function populateThemeSelect(){
+    const sel=document.getElementById('theme');
+    sel.innerHTML = ALL_THEMES.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  }
+  function syncHandSelect(){
+    const sel=document.getElementById('handStyle');
+    if(sel.value!==handMode) sel.value=handMode;
+  }
+  function populateHandSelect(){
+    const sel=document.getElementById('handStyle');
+    const groups={};
+    for(const [id,d] of Object.entries(HANDS)){ (groups[d.type]=groups[d.type]||[]).push([id,d]); }
+    sel.innerHTML = Object.entries(groups).map(([type,list])=>
+      `<optgroup label="${type}">`+
+      list.map(([id,d])=>`<option value="${id}">${d.type} · ${d.tone}</option>`).join('')+
+      `</optgroup>`).join('');
+    sel.value=handMode;
+  }
+  document.getElementById('theme').addEventListener('change',(e)=>{
+    const t=ALL_THEMES.find(x=>x.id===e.target.value); applyTheme(t); feed.focus();
+  });
+
+  document.getElementById('font').addEventListener('change',(e)=>{
+    ink.style.setProperty('--hand', e.target.value); needRender=true;
+  });
+  document.getElementById('inkColor').addEventListener('input',(e)=>{
+    ink.style.setProperty('--ink', e.target.value);
+  });
+
+  const speedR=document.getElementById('speed'), speedV=document.getElementById('speedVal');
+  speedR.addEventListener('input',()=>{ speed=+speedR.value; speedV.textContent=speedR.value; });
+
+  const linesR=document.getElementById('lines'), linesV=document.getElementById('linesVal');
+  linesR.addEventListener('input',()=>{ linesV.textContent=linesR.value; measure(); });
+
+  const textR=document.getElementById('textSize'), textV=document.getElementById('textVal');
+  textR.addEventListener('input',()=>{ textPct=+textR.value; textV.textContent=textR.value; measure(); });
+
+  const mLs=document.getElementById('mL'), mRs=document.getElementById('mR'), mTs=document.getElementById('mT'), mBs=document.getElementById('mB');
+  mLs.addEventListener('input',()=>{ marginL=+mLs.value; setMargins(); measure(); });
+  mRs.addEventListener('input',()=>{ marginR=+mRs.value; setMargins(); measure(); });
+  mTs.addEventListener('input',()=>{ marginT=+mTs.value; setMargins(); measure(); });
+  mBs.addEventListener('input',()=>{ marginB=+mBs.value; setMargins(); measure(); });
+
+  const fxAmtR=document.getElementById('fxAmt');
+  fxAmtR.addEventListener('input',()=>{ sparkleAmt = +fxAmtR.value/100; });
+
+  document.getElementById('guideBtn').addEventListener('click',(e)=>{
+    const on = ruled.classList.toggle('guide'); e.target.classList.toggle('on', on);
+  });
+
+  const handR=document.getElementById('handSize'), handV=document.getElementById('handVal');
+  handR.addEventListener('input',()=>{ handScale=+handR.value/100; handV.textContent=handR.value;
+    activeHand().el.style.width=(handBaseW*handScale)+'px'; });
+
+  document.getElementById('handStyle').addEventListener('change',(e)=>{ setHandMode(e.target.value); });
+
+  document.getElementById('handToggle').addEventListener('click',(e)=>{
+    handVisible=!handVisible; e.target.classList.toggle('on',handVisible);
+  });
+  document.getElementById('deskBtn').addEventListener('click',(e)=>{
+    bgEnabled = !bgEnabled; renderBg();
+    e.target.classList.toggle('on', bgEnabled);
+  });
+  let toastT=0;
+  function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.style.display='block'; clearTimeout(toastT); toastT=setTimeout(()=>el.style.display='none',3000); }
+  document.getElementById('testSoundBtn').addEventListener('click', testSounds);
+  document.getElementById('soundBtn').addEventListener('click',(e)=>{
+    soundOn=!soundOn; e.target.classList.toggle('on',soundOn);
+    e.target.textContent = soundOn ? '🔊 Sound' : '🔇 Sound';
+    if(soundOn){ ensureAudio(); playChime(); }   // unlock + confirm audio within this click gesture
+  });
+
+  document.getElementById('turnBtn').addEventListener('click',()=>{ turnPage(1); feed.focus(); });
+  document.getElementById('prevBtn').addEventListener('click',()=>{ reviewPrev(); });
+  document.getElementById('clearBtn').addEventListener('click',()=>{
+    if(reviewIndex!==null) return;
+    feed.value=''; targetText=''; revealed=0; needRender=true; feed.focus();
+  });
+
+  document.getElementById('fsBtn').addEventListener('click',()=>{
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen?.(); }
+    else { document.exitFullscreen?.(); }
+  });
+
+  function toggleUI(){ controls.classList.contains('hidden') ? showUI() : hideUI(); }
+  function hideUI(){ controls.classList.add('hidden'); showbar.style.display='block'; setTimeout(layout,10); }
+  function showUI(){ controls.classList.remove('hidden'); showbar.style.display='none'; setTimeout(layout,10); }
+  document.getElementById('hideBtn').addEventListener('click', hideUI);
+  document.getElementById('showBtn').addEventListener('click', showUI);
+
+  // persist settings whenever a control changes (registered after the handlers above)
+  controls.addEventListener('change', saveSettings);
+  controls.addEventListener('input',  saveSettings);
+  controls.addEventListener('click', (e)=>{ if(e.target.closest('button,select')) saveSettings(); });
+
+  // load fonts declared by packs: window.STREAMZ_FONTS = [{name, link?, css?}, ...]
+  // 'link' = a stylesheet URL (e.g. Google Fonts); 'css' = an @font-face block (self-hosted).
+  // Each name is added to the Pen dropdown and usable as pen.font in any theme.
+  function applyFonts(){
+    const list = window.STREAMZ_FONTS; if(!Array.isArray(list)) return;
+    const sel = document.getElementById('font');
+    for(const f of list){
+      if(!f || !f.name) continue;
+      if(f.link){ const l=document.createElement('link'); l.rel='stylesheet'; l.href=f.link; document.head.appendChild(l); }
+      if(f.css){ const s=document.createElement('style'); s.textContent=f.css; document.head.appendChild(s); }
+      if(![...sel.options].some(o=>o.value===f.name)){ const o=document.createElement('option'); o.value=f.name; o.textContent=f.name; sel.appendChild(o); }
+    }
+  }
+
+  // ---------- init ----------
+  window.addEventListener('resize', layout);
+  document.addEventListener('fullscreenchange', ()=>setTimeout(layout,60));
+
+  function init(){
+    // merge optional external theme packs (themes/packs.js may define these)
+    if(window.STREAMZ_HANDS) Object.assign(HANDS, window.STREAMZ_HANDS);
+    if(window.STREAMZ_BACKGROUNDS) Object.assign(BG, window.STREAMZ_BACKGROUNDS);
+    if(Array.isArray(window.STREAMZ_THEMES)) ALL_THEMES = THEMES.concat(window.STREAMZ_THEMES);
+    initAudioEls();   // preload sound files (HTML5 audio); synth is the fallback
+    applyFonts();     // inject any pack-declared fonts before themes apply
+
+    populateThemeSelect();
+    populateHandSelect();
+
+    const q = new URLSearchParams(location.search);
+    const saved = loadSettings();
+
+    // precedence: URL param > saved setting > theme default > app default
+    const themeId = q.get('theme') || (saved && saved.theme) || 'classic';
+    const theme = ALL_THEMES.find(t=>t.id===themeId) || ALL_THEMES[0];
+    document.getElementById('theme').value = theme.id;
+    applyTheme(theme);
+
+    // restore saved customizations; theme-owned values only when loading the saved theme
+    applySettings(saved, !!(saved && saved.theme === theme.id));
+
+    // individual URL overrides on top of everything
+    let startAR = (saved && /^\d+:\d+$/.test(saved.ar||'')) ? saved.ar : '9:16';
+    if(q.get('ar') && /^\d+:\d+$/.test(q.get('ar'))) startAR = q.get('ar');
+    if(q.get('font')) setFont(q.get('font'));
+    if(q.get('ink'))  setInk(q.get('ink'));
+    if(q.get('speed')){ speed=+q.get('speed'); speedR.value=speed; speedV.textContent=speed; }
+    if(q.get('paper')){ paperStyle=q.get('paper'); document.getElementById('paperStyle').value=paperStyle; applyPaper(); setMargins(); }
+    if(q.get('hand') && (q.get('hand') in HANDS)){ setHandMode(q.get('hand')); }
+    syncHandSelect();
+    setAR(startAR);
+    layout();
+    setHandMode(handMode); syncHandSelect();
+    // start empty (only seed demo text when ?demo is in the URL — used for screenshots)
+    feed.value = q.get('demo') !== null
+      ? "Dear journal,\n\nToday I went live and tried writing a long entry to see how the words wrap across the ruled page and flow onto a new line all by themselves.\n\n— signing off"
+      : "";
+    targetText = feed.value; revealed = 0;
+    feed.focus();
+    requestAnimationFrame(loop);
+    // refit once fonts load
+    if(document.fonts && document.fonts.ready){ document.fonts.ready.then(()=>{ measure(); }); }
+    setTimeout(measure, 400);
+    settingsReady = true;   // start persisting only after the initial restore
+  }
+  init();
+})();
+</script>
+</body>
+</html>
