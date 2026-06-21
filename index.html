@@ -168,6 +168,9 @@
     letter-spacing:.2px;
   }
   .cursor{display:inline; white-space:pre;}
+  /* zero-size marker sitting exactly on the text baseline at the write point —
+     lets the hand anchor to the real baseline regardless of font/size/spacing/margin */
+  #nibanchor{display:inline-block; width:0; height:0; vertical-align:baseline;}
   /* writing-area / margin guide overlay (debug) */
   .ruled.guide{ box-shadow: inset 0 0 0 2px rgba(255,40,90,.9); }
   .ruled.guide::after{ content:'writing area · text auto-flips at the bottom edge';
@@ -670,6 +673,9 @@
     lineHeight = ref / linesPerPage;                  // line spacing (independent of margins)
     const writeScale = (ref / 13) * (textPct/100);    // text size (independent of spacing & margins)
     fontSize = writeScale * 0.74;
+    // floor: line spacing can never be tighter than the glyphs need, or successive
+    // lines overlap and the text looks deformed/crushed (esp. big text + tight spacing)
+    lineHeight = Math.max(lineHeight, fontSize * 1.25);
     ink.style.setProperty('--lh', lineHeight+'px');
     ink.style.setProperty('--fs', fontSize+'px');
     ruled.style.setProperty('--lh', lineHeight+'px');
@@ -750,7 +756,7 @@
       const o = Math.max(0.16, Math.min(1, age/FADE_MS));
       html += `<span class="wet" style="opacity:${o.toFixed(2)}">${esc(targetText[i]||'')}</span>`;
     }
-    ink.innerHTML = html + '<span class="cursor" id="cur">​</span>';
+    ink.innerHTML = html + '<i id="nibanchor"></i><span class="cursor" id="cur">​</span>';
     // page-full detection
     const overflow = ink.scrollHeight > ink.clientHeight + 2;
     if(reviewIndex===null){
@@ -769,14 +775,15 @@
   function positionHand(){
     const h = activeHand(), el = h.el;
     if(!handVisible || reviewIndex!==null){ el.classList.add('hidden'); return; }
-    const cur = document.getElementById('cur');
-    if(!cur){ return; }
-    const cr = cur.getBoundingClientRect();
+    // anchor to the real text baseline (a zero-size inline-block sitting on the
+    // baseline at the write point) — font/size/spacing/margin independent, so the nib
+    // always lands on the line no matter how those are configured
+    const anchor = document.getElementById('nibanchor') || document.getElementById('cur');
+    if(!anchor){ return; }
+    const cr = anchor.getBoundingClientRect();
     const sr = stage.getBoundingClientRect();
-    // writing point = baseline at the cursor
-    let x = cr.left - sr.left;
-    // baseline within the line box, tracking the actual font size (decoupled from spacing)
-    let y = cr.top - sr.top + lineHeight*0.5 + fontSize*0.42;
+    let x = cr.left - sr.left;                 // end of the written text
+    let y = cr.top - sr.top - fontSize*0.08;   // just above the baseline so the nib rests ON the letters, not below them
     const now = performance.now();
     nibX = x; nibY = y;                       // sparkles emit from the writing point
     // detect carriage-return / wrap (big leftward jump) → lift the pen
